@@ -16,8 +16,8 @@ struct database_page{
 enum PageType{
     data                { content: [field_type] },
     table_index         { record_pointers: [u32] },
-    table_schema        { table_name: str, table_index_pointer: u32, format: [field_type] },
-    database_table_list { table_pointers: [u32]}
+    table_schema        { table_index_pointer: u32, format: [field_type] },
+    database_table_list { table_name: str, table_pointers: [u32]},
 }
 
 
