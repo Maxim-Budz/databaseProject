@@ -35,77 +35,103 @@ pub fn build_file_manager(block_size: u32, data_directory: String) -> File_manag
 impl File_manager{
 
 
-    //TODO ADD ERROR CHECKING.
 
-    pub fn read(&mut self, block: &Block_ID, page: &mut Page) -> u8{
+    //extract contents of a file block into a page's bytes vector
+    
+    pub fn read(&mut self, block: &Block_ID, page: &mut Page) -> Result<u8, std::io::Error>{
+
         let block_size = self.block_size;
+        let block_total = self.total_blocks(&block.file_name)?;
+        let file = self.get_file(&block.file_name)?;
 
+        if(block_total < block.number){
+            //block not in file error
+            return Err(Error::new(ErrorKind::Other, "Block number is too large for file."));
+        }
 
-        let file = match self.get_file(&block.file_name){
-            Ok(file)    => file,
-            _           => return 0,
-        };
-
-        //implement check for range here
 
         file.seek(SeekFrom::Start(u64::from(block_size) * u64::from(block.number)));
 
         let mut write_buffer = vec![0; block_size as usize];
 
-        file.read(&mut write_buffer);
+        file.read(&mut write_buffer)?;
 
-        page.Write(0, write_buffer.to_vec());
+        page.write(0, write_buffer.to_vec());
 
-        return 1;
+        return Ok(1);
 
 
     }
 
 
 
-    pub fn write(&mut self, block: &Block_ID, page: &Page) -> u8{
+
+
+
+    //insert contents of a page's bytes into a file block
+
+    pub fn write(&mut self, block: &Block_ID, page: &Page) -> Result<u8, std::io::Error>{
+
         let block_size = self.block_size;
+        let block_total = self.total_blocks(&block.file_name)?;
+        let file = self.get_file(&block.file_name)?;
 
-        let file = match self.get_file(&block.file_name){
-            Ok(file)    => file,
-            _           => return 0,
+        if(block_total < block.number){
 
-        };
-
-        //implement check for range here
+            let blocks_to_be_added_number = block.number - block_total + 1;
+            let data = vec![0; (blocks_to_be_added_number * block_size) as usize ];
+    
+            file.write(&data)?;
+        }
 
         file.seek(SeekFrom::Start(u64::from(block_size) * u64::from(block.number)));
 
-        let mut data = Vec::<u8>::new();
+        let mut data = vec![0; page.size()];
 
-        page.Read(0, &mut data);
+        page.read(0, &mut data);
 
-        file.write(&data);
+        file.write(&data)?;
 
-        return 1
+        return Ok(1)
     }
 
 
-// TODO
-    pub fn close(&self){}
 
 
-// TODO
-    pub fn file_size(&self, fileName: &String) -> u64{
-        return 0
+
+
+
+    pub fn close_all(&mut self){
+
+        let opened_files_iter = self.opened_files.iter();
+        for file in opened_files_iter {
+            drop(file);
+        }
+
+        self.opened_files.clear();
     }
 
-// 
-// 
-// fix getting the file from the hash map
+
+
+
+    pub fn total_blocks(&mut self, file_name: &String) -> Result<u32, std::io::Error>{
+
+         let file = self.get_file(file_name)?;
+         return Ok( (file.metadata().unwrap().len() / u64::from(self.block_size)) as u32 )
+    }
+
+
+
 
     pub fn get_file(&mut self, file_name: &String) -> Result<&mut File, std::io::Error> {
         
         match self.opened_files.entry(file_name.to_string()) {
             Entry::Occupied(entry)  => Ok(entry.into_mut()),
             Entry::Vacant(entry)    =>{
-                let path = format!("{}{}", self.data_directory, file_name);
-                let file = File::options().read(true).write(true).open(&path)?;
+                let path_string = format!("{}/{}", self.data_directory, file_name);
+                let path = Path::new(&path_string);
+                let file = File::options().read(true).write(true).create(true).open(&path)?;
+
                 Ok(entry.insert(file))
 
             }
