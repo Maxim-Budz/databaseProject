@@ -1,8 +1,11 @@
 use std::io::Error;
 use std::io::ErrorKind;
+use block;
 
 pub struct Page{
     bytes: Vec<u8>,
+    dirty: bool,
+    blockID: Block_ID
 }
 
 pub fn build_page(size: u16) -> Page{
