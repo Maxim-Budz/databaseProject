@@ -1,21 +1,27 @@
 use std::io::Error;
 use std::io::ErrorKind;
-use block;
+use super::block::Block_ID;
 
+#[derive(Debug)]
 pub struct Page{
-    bytes: Vec<u8>,
-    dirty: bool,
-    blockID: Block_ID
+    pub bytes:      Vec<u8>,
 }
 
 pub fn build_page(size: u16) -> Page{
     return Page{
-        bytes: vec![0; usize::from(size)],
+        bytes:          vec![0; usize::from(size)],
     }
 
 }
 
 impl Page{
+
+    pub fn new(size: u32) -> Page{
+        return Page{
+            bytes:          vec![0; size as usize],
+        } 
+    }
+
     pub fn write(&mut self, offset: u16, data: Vec<u8>) -> Result<u8, std::io::Error> {
 
         if  usize::from(offset) + data.len()     >   self.size(){

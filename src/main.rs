@@ -6,6 +6,9 @@ use crate::file_manager::file_manager::build_file_manager;
 use crate::file_manager::page::build_page;
 use crate::file_manager::block::Block_ID;
 
+mod buffer_pool;
+use crate::buffer_pool::page_table::Page_table;
+
 
 fn main() {
     let mut file_manager = build_file_manager(8192, String::from("/home/maxim/Rust/databaseProject/files") );
@@ -25,7 +28,17 @@ fn main() {
     let mut page2 = build_page(8192);
     file_manager.read(&block, &mut page2);
 
-    println!("contents of page2: {:?}", page2.byte());
+    let mut page_table = Page_table::new(50000, 8192);
 
-    file_manager.close_all();
+    page_table.request_new_page(block, &mut file_manager);
+
+    let block  = Block_ID{file_name: String::from("Testing12345"), number: 100};
+    page_table.request_new_page(block, &mut file_manager);
+
+    let block  = Block_ID{file_name: String::from("Testing12345"), number: 100};
+
+    page_table.request_new_page(block, &mut file_manager);
+
+    println!("{:?}", page_table.pages_in_memory);
+
 }
