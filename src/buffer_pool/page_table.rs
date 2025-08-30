@@ -4,22 +4,23 @@ use crate::file_manager::page::Page;
 use crate::file_manager::block::Block_ID;
 use crate::file_manager::file_manager::File_manager;
 
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub struct Page_table_entry{
-    page:       Page,
-    block_ID:   Block_ID,
-    pin_count:  u32,
-    referenced: bool,
-    dirty:      bool,
+    pub page:       Page,
+    pub pin_count:  u32,
+    pub referenced: bool,
+    pub dirty:      bool,
 
 }
 
 #[derive(Debug)]
 pub struct Page_table{
-    pub pages_in_memory: Vec< Option< Page_table_entry > >,
+    pub pages_in_memory: HashMap<Block_ID, Page_table_entry>,
     pub clock_index: usize,
 
-    pub page_table_size: u32,
+    pub max_page_count: u32,
     pub page_size: u32,
 }
 
@@ -30,13 +31,14 @@ impl Page_table{
 
 
     pub fn new(total_size: u32, page_size: u32) -> Page_table{
-        let vec_size = total_size / page_size;
-        let mut vector = Vec::new();
-        vector.resize_with(vec_size.try_into().unwrap(), || None);
+        let max_size = total_size / page_size;
+        let mut map = HashMap::new();
+        map.reserve(max_size.try_into().unwrap());
+        
         Page_table{
-            pages_in_memory: vector,
+            pages_in_memory: map,
             clock_index: 0,
-            page_table_size: vec_size,
+            max_page_count: max_size,
             page_size: page_size,
         }
         
@@ -46,21 +48,23 @@ impl Page_table{
 
 
 
-    pub fn write_to_disk(&mut self, index: u32, mut file_manager: File_manager) -> Result<u8, std::io::Error>{
+    pub fn write_to_disk(&mut self, block: &Block_ID, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
         
-        if let Some(entry) = self.pages_in_memory[index as usize].as_mut() {
-           entry.pin_count += 1;
-           let mut page = &entry.page;
-           let block = &entry.block_ID;
-           let result = file_manager.write(&block, &mut page);
-           entry.pin_count -= 1;
-           return result
-           
+        let fetch = self.pages_in_memory.get_mut(block);
+        
+        match fetch{
 
-        }else{
-            return Ok(0)
+            Some(entry)    =>  {
+                        entry.pin_count += 1;
+                        let mut page = &entry.page;
+                        let result = file_manager.write(block, &mut page);
+                        entry.pin_count -= 1;
+                        return result
+                        },   
 
-        };
+            None    =>  return Ok(0),
+
+        }
     }
 
 
@@ -68,38 +72,54 @@ impl Page_table{
 
 
 
-    fn write_to_table(&mut self, new_block_ID: Block_ID, index:u32, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
-        
-        let entry = if let Some(entry) = self.pages_in_memory[index as usize].as_mut(){
+    fn replace_page(&mut self, new_block_ID: Block_ID, old_block_ID: Option<Block_ID>, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
+
+        if old_block_ID.is_some(){
             
-            entry.dirty         = false;
-            entry.pin_count     = 0;
-            entry.referenced    = false;
-            entry.block_ID      = new_block_ID;
+            let Some(old_block_ID) = old_block_ID else{return Ok(0)};
+       
+            let write_to_disk = {
 
-            entry
+                let fetch = self.pages_in_memory.get(&old_block_ID);
+                
+                match fetch{
+                    
+                    None => false,
+
+                    Some(entry) => {
+                            if entry.dirty{
+                                true
+                            }else{
+                                false
+                            }
+                                },
+
+                }
+            };
+
+            if write_to_disk{
+
+                self.write_to_disk(&old_block_ID, file_manager)?;
+            };
+
+            self.pages_in_memory.remove(&old_block_ID);
+        }
 
 
 
-        }else{
-            let entry = Page_table_entry{
-                            page:       Page::new(self.page_size),
-                            block_ID:   new_block_ID,
-                            pin_count:  0,
-                            referenced: false,
-                            dirty:      false,
-                        };
-
-            self.pages_in_memory[index as usize] = Some(entry);
-
-            self.pages_in_memory[index as usize].as_mut().unwrap()
 
 
-        };
+        let entry = Page_table_entry{
+                        page:       Page::new(self.page_size),
+                        pin_count:  0,
+                        referenced: true,
+                        dirty:      false,
+                    };
 
-        
+        self.pages_in_memory.insert(new_block_ID.clone(), entry );
 
-        return file_manager.read(&entry.block_ID, &mut entry.page) 
+
+        return file_manager.read(&new_block_ID, &mut self.pages_in_memory.get_mut(&new_block_ID).unwrap().page)
     }
 
 
@@ -107,18 +127,18 @@ impl Page_table{
 
 
 
-    pub fn request_new_page(&mut self, block_ID: Block_ID, file_manager: &mut File_manager)-> Result<u8, std::io::Error>{
-        //add to queueu
+    pub fn request_new_page(&mut self, new_block_ID: Block_ID, file_manager: &mut File_manager)-> Result<u8, std::io::Error>{
+        //add to queue
         //
         //also check if it is already in there 
         //
         //then return the index of the page.
 
-        let index = self.find_next_replaceable_page();
+        let block_to_replace = self.find_next_replaceable_page();
 
-        println!("Index to be replaced: {:?}", index);
+        //println!("Block to be replaced: {:?}", block_to_replace);
 
-        return self.write_to_table(block_ID, index, file_manager)
+        return self.replace_page(new_block_ID, block_to_replace, file_manager)
 
     }
 
@@ -128,32 +148,36 @@ impl Page_table{
 
 
 
-    pub fn find_next_replaceable_page(&mut self) -> u32{
+    pub fn find_next_replaceable_page(&mut self) -> Option<Block_ID>{
 
-        while true{
-            self.clock_index = (self.clock_index + 1) % self.page_table_size as usize;
-            let content = &self.pages_in_memory[self.clock_index];
-
-            match content {
-                None    =>  return self.clock_index.try_into().unwrap(),
-
-                _   =>{
-
-                    let content = content.as_ref().unwrap();
-
-                    if content.pin_count == 0 && !content.referenced{
-                        return self.clock_index.try_into().unwrap()
-
-                    }else{
-                        let mut referenced = content.referenced;
-                        referenced = false;
-                    };
-                    },
-            };
-
+        //println!("max count: {:?}, page num in memory: {:?}", self.max_page_count, self.pages_in_memory.len());
+        
+        if self.max_page_count > self.pages_in_memory.len().try_into().unwrap(){
+            return None
         }
 
-        return 0;
+        else{
+
+            loop {
+
+                for (block, content) in self.pages_in_memory.iter_mut(){
+                    
+                    //self.clock_index = (self.clock_index + 1) % self.page_table_size as usize;
+
+                    if content.pin_count <= 0 && !content.referenced{
+                        return Some(block.clone());
+
+                    }else{
+                        
+                        content.referenced = false;
+                    };
+                };
+
+            };
+
+        };
+
+        return None;
 
     }
 
