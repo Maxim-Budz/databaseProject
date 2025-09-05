@@ -9,9 +9,13 @@ use crate::file_manager::block::Block_ID;
 mod buffer_pool;
 use crate::buffer_pool::page_table::Page_table;
 
+mod table;
+use crate::table::table::Table;
+
 
 fn main() {
-    test_page_replacement();
+
+    test_table_creation();
 
 }
 
@@ -47,6 +51,18 @@ fn test_page_replacement() {
     //println!("{:?}",pt);
     println!("{:?}",pt.pages_in_memory.len());
 
+
+}
+
+fn test_table_creation(){
+    let file_manager = build_file_manager(16384, "./files".to_string());
+    let table = Table::new("Test_Table");
+    table.init_file(file_manager);
+
+}
+
+
+fn test_adding_column(){
 
 }
 

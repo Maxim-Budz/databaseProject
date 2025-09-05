@@ -4,22 +4,71 @@ use super::block::Block_ID;
 
 #[derive(Debug)]
 pub struct Page{
-    pub bytes:      Vec<u8>,
+    pub bytes:                  Vec<u8>,
+    pub page_num:               u32,            //4 bytes
+    pub page_type:              Page_type,      //1 byte
+    pub previous_index:         Option<u32>,    //4 bytes
+    pub next_index:             Option<u32>,    //4 bytes
+    pub data_end_point:         u16,            //2 bytes
+    pub record_index_end_point: u16,            //2 bytes   
+                                                //
+                                                //in total 17 bytes for page meta data
+
 }
 
-pub fn build_page(size: u16) -> Page{
+pub fn build_page(size: u16, page_num: u32, page_type: Page_type) -> Page{
+    let x = match page_type{
+        Page_type::Data            =>  size - 4,
+        Page_type::Table_structure =>  size - 2,
+    };
+
     return Page{
-        bytes:          vec![0; usize::from(size)],
+        bytes:                  vec![0; usize::from(size)],
+        page_num:               0,
+        page_type:              page_type,
+        previous_index:         None,
+        next_index:             None,
+        data_end_point:         17, // meta data ends at byte 17 (index 16)
+        record_index_end_point: x,
+
+
     }
 
 }
 
+#[derive(Debug)]
+pub enum Page_type{
+    Data,
+    Table_structure,
+    //...
+}
+
 impl Page{
 
-    pub fn new(size: u32) -> Page{
+    pub fn new(size: u16, page_num: u32, page_type: Page_type) -> Page{
+
+        let x = match page_type{
+
+            Page_type::Data            =>  size - 4,
+            Page_type::Table_structure =>  size - 2,
+        };
+
         return Page{
-            bytes:          vec![0; size as usize],
-        } 
+            bytes:                  vec![0; usize::from(size)],
+            page_num:               0,
+            page_type:              page_type,
+            previous_index:         None,
+            next_index:             None,
+            data_end_point:         17, // meta data ends at byte 17 (index 16)
+            record_index_end_point: x,
+
+
+        }
+
+        
+        
+        
+
     }
 
     pub fn write(&mut self, offset: u16, data: Vec<u8>) -> Result<u8, std::io::Error> {
@@ -60,4 +109,41 @@ impl Page{
     pub fn size(&self) -> usize{
         return self.bytes.len()
     }
+
+
+
+
+    pub fn get_record_index(&self) -> Vec<u16> {
+        let slice = &self.bytes[(self.record_index_end_point as usize)..];
+
+        let mut record_index: Vec<u16> = vec![];
+        
+
+        for i in (self.record_index_end_point as usize )..slice.len(){
+            let mut big_endian = slice[i];
+            let mut little_endian = slice[i+1];
+            let result: u16 = ( (big_endian as u16) << 8) | little_endian as u16;
+            record_index.push(result);
+        }
+
+        return record_index
+    }
+
+
+
+
+
+    pub fn add_record_index(&mut self, entry: u16){
+        //add error checking
+        //
+        //thoughts: either shuffle all bytes to fill empty space or in this function find next
+        //empty slot.
+
+        self.record_index_end_point -= 2;
+        let bytes: [u8; 2] = [(entry >> 8) as u8, entry as u8];
+
+        self.bytes[self.record_index_end_point as usize] = bytes[0];
+        self.bytes[(self.record_index_end_point + 1) as usize] = bytes[1];
+    }
+
 }

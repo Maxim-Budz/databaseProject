@@ -3,6 +3,7 @@
 use crate::file_manager::page::Page;
 use crate::file_manager::block::Block_ID;
 use crate::file_manager::file_manager::File_manager;
+use crate::file_manager::page::Page_type;
 
 use std::collections::HashMap;
 
@@ -21,7 +22,7 @@ pub struct Page_table{
     pub clock_index: usize,
 
     pub max_page_count: u32,
-    pub page_size: u32,
+    pub page_size: u16,
 }
 
 
@@ -30,8 +31,8 @@ impl Page_table{
 
 
 
-    pub fn new(total_size: u32, page_size: u32) -> Page_table{
-        let max_size = total_size / page_size;
+    pub fn new(total_size: u32, page_size: u16) -> Page_table{
+        let max_size = total_size / page_size as u32;
         let mut map = HashMap::new();
         map.reserve(max_size.try_into().unwrap());
         
@@ -106,11 +107,14 @@ impl Page_table{
         }
 
 
+        //figure out what page type to store in memory
+
+
 
 
 
         let entry = Page_table_entry{
-                        page:       Page::new(self.page_size),
+                        page:       Page::new(self.page_size, new_block_ID.number, Page_type::Data ),
                         pin_count:  0,
                         referenced: true,
                         dirty:      false,
