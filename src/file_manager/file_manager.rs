@@ -13,9 +13,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 pub struct File_manager{
-    block_size: u16,
-    data_directory: String,
-    opened_files: HashMap<String, File>,
+    pub block_size: u16,
+    pub data_directory: String,
+    pub opened_files: HashMap<String, File>,
 
     //implement mutex
     
@@ -75,7 +75,7 @@ impl File_manager{
         let block_total = self.total_blocks(&block.file_name)?;
         let file = self.get_file(&block.file_name)?;
 
-        if(block_total < block.number - 1){
+        if(block_total < block.number){
 
             let blocks_to_be_added_number = block.number - block_total + 1;
             let data = vec![0; (blocks_to_be_added_number * block_size as u32) as usize ];

@@ -73,7 +73,7 @@ impl Page_table{
 
 
 
-    fn replace_page(&mut self, new_block_ID: Block_ID, old_block_ID: Option<Block_ID>, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
+    fn replace_page(&mut self, new_block_ID: &Block_ID, old_block_ID: Option<Block_ID>, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
 
         if old_block_ID.is_some(){
             
@@ -129,9 +129,36 @@ impl Page_table{
 
 
 
+    pub fn get_mut_page(&mut self, block: Block_ID, file_manager: &mut File_manager) -> &mut Page{
+
+       if !self.pages_in_memory.contains_key(&block){
+            let res = self.request_new_page(&block, file_manager); 
+       };
+
+        let fetch = self.pages_in_memory.get_mut(&block);
+
+        return match fetch{
+        
+            None => panic!("PAGE NOT FOUND!"),
+
+            Some(entry) => {
+                    
+                entry.pin_count += 1;
+                entry.referenced = true;
+                return &mut entry.page
+                        },
+
+       }
+        
+
+    }
+
+    
 
 
-    pub fn request_new_page(&mut self, new_block_ID: Block_ID, file_manager: &mut File_manager)-> Result<u8, std::io::Error>{
+
+
+    pub fn request_new_page(&mut self, new_block_ID: &Block_ID, file_manager: &mut File_manager)-> Result<u8, std::io::Error>{
         //add to queue
         //
         //also check if it is already in there 
