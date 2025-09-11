@@ -129,7 +129,7 @@ impl Page_table{
 
 
 
-    pub fn get_mut_page(&mut self, block: Block_ID, file_manager: &mut File_manager) -> &mut Page{
+    pub fn get_mut_page(&mut self, block: Block_ID, file_manager: &mut File_manager) -> Option<&mut Page>{
 
        if !self.pages_in_memory.contains_key(&block){
             let res = self.request_new_page(&block, file_manager); 
@@ -139,7 +139,7 @@ impl Page_table{
 
         return match fetch{
         
-            None => panic!("PAGE NOT FOUND!"),
+            None => return None,
 
             Some(entry) => {
                     
