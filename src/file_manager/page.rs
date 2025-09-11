@@ -110,6 +110,16 @@ impl Page{
         return self.bytes.len()
     }
 
+    pub fn remove_record(&mut self, from: u16, to: u16){
+        //check if before record index end point and after the metadata bytes
+        //
+        // if it is ok then take a slice from (to) to record end point and move all bytes left
+        // until they are at from.
+        //
+        // then set the record end point to -= (from - to). Dont care about the bytes after because
+        // they will be overwritten in the future.
+
+    }
 
 
 
@@ -145,5 +155,14 @@ impl Page{
         self.bytes[self.record_index_end_point as usize] = bytes[0];
         self.bytes[(self.record_index_end_point + 1) as usize] = bytes[1];
     }
+
+    pub fn remove_record_index(&mut self, index: u16){
+        //shift everything from record end point to (index - 1), 2 places forward but not to overwrite
+        //the last bytes.
+        //also if the index is the end index then don't shift anything.
+
+    }
+
+
 
 }
