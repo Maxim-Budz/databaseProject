@@ -145,7 +145,7 @@ impl Page_table{
                     
                 entry.pin_count += 1;
                 entry.referenced = true;
-                return &mut entry.page
+                return Some(&mut entry.page)
                         },
 
        }
