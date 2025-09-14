@@ -24,7 +24,7 @@ pub enum Data_type{
     Float = 1,                  // 8 bytes.
     //FixedLength(u16) = 2,       // 2 bytes for size in bytes then string follows
 
-    Variable_string = 3,        // 1 byte for the size of string. if 0 then store 3 bytes for page
+    String = 3,        // 1 byte for the size of string. if 0 then store 3 bytes for page
                                 // num and 2 bytes for index. This will be stored in an overflow
                                 // page for larger pieces of data otherwise store up to 255 bytes
 
@@ -64,8 +64,8 @@ impl Table{
         let block = Block_ID{file_name: self.table_name.clone(), number: 0};
 
         //file_manager.read(&block, &mut page);
-        //
-        let mut page = page_table.get_mut_page(block, file_manager);
+        //TODO error checking here 
+        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
 
 
         //writing the column to the data section
@@ -101,45 +101,49 @@ impl Table{
 
         page.data_end_point = page.data_end_point + 2 + column_name_byte_num as u16;
 
-
-
-        //println!("Page: {:?}", page);
-
-
     }
 
+
+
+//TODO test and fix going to other pages
     pub fn find_column_index(&self, name: String, page_table: &mut Page_table, file_manager: &mut File_manager ) -> Option<(u32, u16)>{
 
         //get byte length of the name then linearly search through the columns and find one which
         //matches the byte length number. Then check if the names are the same.
-        let column_name_bytes_num = name.len();
+        let column_name_bytes_num = name.len() as u8;
     
         let block = Block_ID{file_name: self.table_name.clone() ,number: 0};
 
-        let page = match page_table.get_mut_page(block, &file_manager){
+        let mut page = match page_table.get_mut_page(block, file_manager){
                         None    => return None,
                         Some(p) => p,
                     };
+        println!("{:?}", column_name_bytes_num);
+        println!("{:?}", page.get_record_index());
 
         
 
-        let index = 19;
+        let mut index = 19;
 
-        let page_num = 0;
+        let mut page_num = 0;
 
         loop{
             if (index > page.record_index_end_point - 2){
-                let next_page_bytes = page.bytes[ (page.record_index_end_point-4) .. (page.record_index_end_point-1) ];
+                let next_page_bytes = &page.bytes[ (page.record_index_end_point-4) as usize .. (page.record_index_end_point) as usize ];
 
                 let page_num = (( next_page_bytes[0] as u32) << 24)
                              | (( next_page_bytes[1] as u32) << 16)
                              | (( next_page_bytes[2] as u32) << 8 )
                              |  ( next_page_bytes[3] as u32);
 
+                if page_num == 0{
+                    return None
+                }
 
-                let block = Block_ID{file_name: &self.file_name, number: &page_num};
 
-                let page = match page_table.get_mut_page(block, &file_manager){
+                let block = Block_ID{file_name: self.table_name.clone(), number: page_num};
+
+                page = match page_table.get_mut_page(block, file_manager){
                                 None    => return None,
                                 Some(p) => p
                             };
@@ -147,18 +151,20 @@ impl Table{
 
             }
 
-            if (page.bytes[index] == column_name_bytes_num){
-                let name_bytes = page.bytes[index+1..index+column_name_bytes_num];
 
-                let s = String::from_utf8_lossy(name_bytes.to_vec()).unwrap();
+            if (page.bytes[index as usize] == column_name_bytes_num ){
+                let name_bytes = &page.bytes[(index+1) as usize .. (index+1+column_name_bytes_num as u16) as usize ];
+
+                let s = String::from_utf8(name_bytes.to_vec()).unwrap();
 
                 if s == name{
-                    return (page_num, index)
+                    return Some( (page_num, index-1) ) // index -1 because the start of the column
+                                                       // is 1 before the stringname size.
                 }
             }
 
             //increment to next column name byte num
-            index += (page.bytes[index] + 1);
+            index += (page.bytes[index as usize] + 2) as u16;
             
         };
 
@@ -166,60 +172,121 @@ impl Table{
     }
 
     pub fn remove_column(&self, name: String, page_table: &mut Page_table, file_manager: &mut File_manager){
-        let location = self.find_column_index(name);
+        let location = self.find_column_index(name, page_table, file_manager).unwrap();
 
-        let block = Block_ID{file_name: &self.file_name, number: location[0]};
+        let block = Block_ID{file_name: self.table_name.clone(), number: location.0};
 
         let mut page = match page_table.get_mut_page(block, file_manager){
-                        None    => return None,
+                        None    => return (),
                         Some(p) => p,
         };
-        
-        let start_index = location[1];
-        let string_byte_num = page.bytes[start_index + 1];
-        let end_index = start_index + 1 + string_byte_num;
 
-        //start at the index found from location then calculate the size of the column data to be
-        //removed
-        //
-        //if the part of the column is in another page 
-        //(index + string byte count > index_ref_end_point)
-        //remove all remaining bytes as usual but then open the other page and remove those bytes
-        //aswell and do the appropriate stuff there. (currently not implemented).
-        //
-        //after size calc, move all column bytes upwards to replace the column to be removed.
-        //
-        //then subtract the bytes of the removed column from all reference indexes and then shift
-        //them all up two places.
+
+        let start_index = location.1;
+        let string_byte_num = page.bytes[ (start_index + 1) as usize];
+        let end_index = start_index + 2 + string_byte_num as u16;
+
         
         if end_index > page.data_end_point{
-            // the record is in another page.
-            page.remove_record(start_index, page.data_end_point);
-            //then get the 5 bytes after to figure out the page num and index then remove the
-            //remaining bytes.
-
+            page.remove_data_range(start_index, page.data_end_point - 1);
         }else{
-            page.remove_record(start_index, end_index);
+            page.remove_data_range(start_index, end_index);
         }
-
+        
+        page.remove_record_index(start_index);
 
 
     }
 
-    pub fn modify_column_name(&self, old_name: String, new_name: String, new_type: Data_type){
-        let location = self.find_column_index(old_name);
+    pub fn modify_column_name(&self, old_name: String, new_name: String, page_table: &mut Page_table, file_manager: &mut File_manager){
+        
+        let location = match self.find_column_index(old_name.clone(), page_table, file_manager){
+                        None    => {
+                            println!("A");
+                            return ()}, // update
+                        Some(n) => n,
+        };
 
+        let block = Block_ID{file_name: self.table_name.clone(), number: 0};
+        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
+
+        //if the string size is > to original then shift everything after the end of the string
+        //enough places and then overwrite
+        //but if the bytes requireed exceeds the data heap then if there is no next page, create
+        //new one 
+        //otherwise find the existing page and try to add.
+        
+        let start_index = location.1;
+        let string_bytes_num = page.bytes[ (start_index + 1) as usize];
+        let end_index = start_index + 2 + string_bytes_num as u16;
+
+        if new_name.len() <= old_name.len(){
+            let dst = &mut page.bytes[2 + start_index as usize .. 2 +start_index as usize + new_name.len()];
+            let src = new_name.as_bytes();
+
+            dst.copy_from_slice(src);
+            page.remove_data_range(start_index + 2 + new_name.len() as u16, end_index);
+
+            let start_record_index_point = page.record_index_end_point - page.get_record_count_after(start_index);
+            let end_record_index_point = page.record_index_end_point;
+            page.update_records_after(start_index, (old_name.len() - new_name.len()) as u16 , false);
+
+        }else{
+
+            let bytes_to_add_number = new_name.len() - old_name.len();
+            if page.data_end_point + bytes_to_add_number as u16 >= page.record_index_end_point{
+                //TODO make a new page and insert remaining stuff in there like a linked list.
+            }
+
+            page.bytes.copy_within(end_index as usize .. page.data_end_point as usize, end_index as usize + bytes_to_add_number );
+
+            let dst = &mut page.bytes[start_index as usize + 2 .. start_index as usize + 2 + new_name.len()];
+            let src = new_name.as_bytes();
+            dst.copy_from_slice(src);
+
+            let start_record_index_point = page.record_index_end_point - page.get_record_count_after(start_index);
+            let end_record_index_point = page.record_index_end_point;
+
+            page.update_records_after(start_index, bytes_to_add_number as u16, true);
+        }
+
+        page.bytes[start_index as usize + 1] = new_name.len() as u8;
         
     }
 
-    pub fn modify_column_type(&self, name: String, new_type: Data_type){
-        let location = self.find_column_index(name);
-        let block    = Block_ID{file_name: &self.file_name, number: location[0]};
-        let mut page = page_table.get_mut_page(block, file_manager);
 
-        page.bytes[location[1]] = new_type as u8;
+
+    pub fn modify_column_type(&self, name: String, new_type: Data_type, page_table: &mut Page_table, file_manager: &mut File_manager){
+        let location = self.find_column_index(name, page_table, file_manager).unwrap();
+        let block    = Block_ID{file_name: self.table_name.clone(), number: location.0};
+        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
+        
+        page.bytes[location.1 as usize] = new_type as u8;
+        
+    }
+
+    pub fn print_columns(&self, page_table: &mut Page_table, file_manager: &mut File_manager){
+        //add so it works for all pages
+        let mut page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
+        let mut index = 18;
+        let mut count = 0;
+        loop{
+            let t = page.bytes[index];
+            let string_size_bytes = page.bytes[index + 1];
+            let string = std::str::from_utf8(&page.bytes[(index + 2) as usize .. (index as usize + 2 + string_size_bytes as usize) as usize]).unwrap();
+            count += 1;
+            println!("Index: {}, Type: {}, Name: {}", count, t, string);
+
+            index += 2 + string_size_bytes as usize;
+
+            if index > page.data_end_point as usize{
+                return ()
+            }
+
+        }
 
     }
+
 
 
 
