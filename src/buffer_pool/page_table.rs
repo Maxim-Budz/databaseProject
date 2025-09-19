@@ -68,6 +68,41 @@ impl Page_table{
         }
     }
 
+    //creates a page in between two pages
+    pub fn create_overflow_page(&mut self, old_block: &Block_ID, page_type: Page_type, next_page_num: u32, overflow_bytes: &[u8], file_manager: &mut File_manager){
+        //create the page and fill in the appropriate data.
+        
+        //create a new page at the end of the file.
+        let overflow_page_num = match file_manager.total_blocks(&old_block.file_name){
+                            Err(e)  => return (),// TODO
+                            Ok(x)   => x,
+        };
+
+        let mut overflow_page = Page::new(self.page_size, overflow_page_num, page_type);
+        let byte_length = overflow_bytes.len() as u16;
+
+        overflow_page.write(17, overflow_bytes.to_vec() );
+
+        overflow_page.data_end_point += byte_length;
+
+        overflow_page.update_record_index_range(self.page_size - 1, overflow_page.record_index_end_point, byte_length, true);
+
+        overflow_page.set_next_page_num(next_page_num);
+
+        overflow_page.set_previous_page_num(old_block.number);
+
+        let mut prev_page = self.get_mut_page(old_block.clone(), file_manager).unwrap();
+
+        prev_page.set_next_page_num(overflow_page_num);
+
+        if next_page_num != 0{
+            let mut next_page = self.get_mut_page(Block_ID{file_name: old_block.file_name.clone(), number: next_page_num}, file_manager).unwrap();
+            next_page.set_previous_page_num(overflow_page_num);
+        };
+
+        self.add_page(overflow_page, &Block_ID{file_name: old_block.file_name.clone(), number: overflow_page_num}, file_manager);
+    }
+
 
 
 
@@ -76,6 +111,7 @@ impl Page_table{
     fn replace_page(&mut self, new_block_ID: &Block_ID, old_block_ID: Option<Block_ID>, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
 
         if old_block_ID.is_some(){
+        
             
             let Some(old_block_ID) = old_block_ID else{return Ok(0)};
        
@@ -104,9 +140,8 @@ impl Page_table{
             };
 
             self.pages_in_memory.remove(&old_block_ID);
+
         }
-
-
         //figure out what page type to store in memory
 
 
@@ -120,8 +155,8 @@ impl Page_table{
                         dirty:      false,
                     };
 
-        self.pages_in_memory.insert(new_block_ID.clone(), entry );
 
+        self.pages_in_memory.insert(new_block_ID.clone(), entry );
 
         return file_manager.read(&new_block_ID, &mut self.pages_in_memory.get_mut(&new_block_ID).unwrap().page)
     }
@@ -170,6 +205,59 @@ impl Page_table{
         //println!("Block to be replaced: {:?}", block_to_replace);
 
         return self.replace_page(new_block_ID, block_to_replace, file_manager)
+
+    }
+
+
+    //adds a page that is not already saved in a file.
+
+    pub fn add_page(&mut self, page: Page, block: &Block_ID, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
+        let block_to_replace = self.find_next_replaceable_page();
+        
+        if block_to_replace == None{
+
+            
+            let Some(block_to_replace) = block_to_replace else{return Ok(0)};
+       
+            let write_to_disk = {
+
+                let fetch = self.pages_in_memory.get(&block_to_replace);
+                
+                match fetch{
+                    
+                    None => false,
+
+                    Some(entry) => {
+                            if entry.dirty{
+                                true
+                            }else{
+                                false
+                            }
+                                },
+
+                }
+            };
+
+            if write_to_disk{
+
+                self.write_to_disk(&block_to_replace, file_manager)?;
+            };
+
+            self.pages_in_memory.remove(&block_to_replace);
+
+        }
+
+        let entry = Page_table_entry{
+            page:       page,
+            pin_count:  0,
+            referenced: true,
+            dirty:      true,
+        };
+
+
+        self.pages_in_memory.insert(block.clone(), entry );
+        
+        return Ok(0);
 
     }
 

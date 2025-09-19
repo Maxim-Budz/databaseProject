@@ -23,6 +23,7 @@ use crate::table::table::Data_type;
 
 
 fn main() {
+    test_table_creation();
     let mut file_manager = build_file_manager(16384, "./files".to_string());
 
     let mut page_table = Page_table::new(40000, 16384);
@@ -30,7 +31,7 @@ fn main() {
     let table = create_test_table_instance();
 
 
-    for i in 1..50{ 
+    for i in 1..20{ 
         test_adding_basic_column(&table, &mut file_manager, &mut page_table);
         test_adding_basic_column_2(&table, &mut file_manager, &mut page_table);
     }
@@ -39,21 +40,14 @@ fn main() {
     for i in 1..5{
         table.add_column("Strings".to_string(), Data_type::String, &mut page_table, &mut file_manager);
     }
-    for i in 1..50{ 
+    for i in 1..20{ 
         test_adding_basic_column(&table, &mut file_manager, &mut page_table);
         test_adding_basic_column_2(&table, &mut file_manager, &mut page_table);
     }
-
-    //print_table_structure_page(&mut file_manager, &mut page_table);
-
+    table.print_columns_2(&mut page_table, &mut file_manager);
     test_finding_and_modifying_table_column(&table, &mut file_manager, &mut page_table);
-    //
-    table.print_columns(&mut page_table, &mut file_manager);
     table.remove_column("Strings".to_string(), &mut page_table, &mut file_manager);
 
-    //print_table_structure_page(&mut file_manager, &mut page_table);
-    table.print_columns(&mut page_table, &mut file_manager);
-    print_table_structure_page(&mut file_manager, &mut page_table);
 }
 
 
@@ -104,9 +98,8 @@ fn create_test_table_instance() -> Table{
 
 fn print_table_structure_page(file_manager: &mut File_manager, page_table: &mut Page_table){
     let block = Block_ID{file_name: "Test_Table".to_string(), number: 0};
-    let page = page_table.get_mut_page(block, file_manager);
-
-    println!("{:?}", &page.unwrap().bytes[1725..1825]);
+    let page = page_table.get_mut_page(block, file_manager).unwrap();
+    println!("{:?} \n", &page.bytes);
     
 }
 
@@ -120,14 +113,14 @@ fn test_adding_basic_column_2(table: &Table, file_manager: &mut File_manager, pa
 }
 
 fn test_finding_and_modifying_table_column(table: &Table, file_manager: &mut File_manager, page_table: &mut Page_table){
-    let result = table.find_column_index("Strings".to_string(), page_table, file_manager).unwrap();
-    println!("Result from searching for Strings: {:?}", result);
+    //let result = table.find_column_index("Strings".to_string(), page_table, file_manager).unwrap();
+    //println!("Result from searching for Strings: {:?}", result);
 
     table.modify_column_type("Strings".to_string(), Data_type::Blob, page_table, file_manager);
     table.modify_column_name("Strings".to_string(), "Old, Dwarf's castle".to_string(), page_table, file_manager);
     
-    for i in 0..100{
-        println!("{}",i);
+    for i in 0..101{
+        //println!("{}",i);
         table.modify_column_name("ABCDEFGHIJKLMNOPQRSTUVWXYZpwehthgegiahearjtoej4naojrfne".to_string(), "BLOBs".to_string(), page_table, file_manager);
     }
 

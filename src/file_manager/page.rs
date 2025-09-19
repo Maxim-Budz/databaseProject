@@ -17,10 +17,6 @@ pub struct Page{
 }
 
 pub fn build_page(size: u16, page_num: u32, page_type: Page_type) -> Page{
-    let x = match page_type{
-        Page_type::Data            =>  size - 4,
-        Page_type::Table_structure =>  size - 2,
-    };
 
     return Page{
         bytes:                  vec![0; usize::from(size)],
@@ -29,29 +25,39 @@ pub fn build_page(size: u16, page_num: u32, page_type: Page_type) -> Page{
         previous_index:         None,
         next_index:             None,
         data_end_point:         17, // meta data ends at byte 17 (index 16)
-        record_index_end_point: x,
+        record_index_end_point: size-2,
 
 
     }
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[repr(u8)]
 pub enum Page_type{
-    Data,
-    Table_structure,
-    //...
+    Table_structure = 1,
+    Record = 2,
+    B_Tree = 3,
+    Data = 4,
+
+    
 }
 
+//Page metadata:
+//
+// 0 0 0 0 | 0 | 0 0 0 0 | 0 0 0 0 | 0 0 | 0 0 
+// page num  |      |         |       |     |
+//          type    |         |       |     |
+//              prev page     |       |     |
+//                        next page   |     |
+//                                data end  |
+//                                        record end
+//
+//
+// when page is written to disk, page table ensures the meta data is written correctly.
 impl Page{
 
     pub fn new(size: u16, page_num: u32, page_type: Page_type) -> Page{
-
-        let x = match page_type{
-
-            Page_type::Data            =>  size - 4,
-            Page_type::Table_structure =>  size - 2,
-        };
 
         return Page{
             bytes:                  vec![0; usize::from(size)],
@@ -60,16 +66,41 @@ impl Page{
             previous_index:         None,
             next_index:             None,
             data_end_point:         17, // meta data ends at byte 17 (index 16)
-            record_index_end_point: x,
+            record_index_end_point: size - 2,
 
 
         }
 
-        
-        
-        
+    }
+
+    pub fn set_data_end_point(&mut self, value: u16){
+        self.data_end_point = value;
+        let bytes = value.to_be_bytes();
+        self.write(13, bytes.to_vec());
+    }
+
+    pub fn set_record_index_end_point(&mut self, value: u16){
+        self.record_index_end_point = value;
+        let bytes = value.to_be_bytes();
+        self.write(15, bytes.to_vec());
+    }
+
+    pub fn set_previous_page_num(&mut self, value: u32){
+        self.previous_index = Some(value);
+        let bytes = value.to_be_bytes();
+        self.write(5, bytes.to_vec());
+    }
+
+    pub fn set_next_page_num(&mut self, value: u32){
+        self.next_index = Some(value);
+        let bytes = value.to_be_bytes();
+        self.write(9, bytes.to_vec());
+
 
     }
+
+
+
 
     pub fn write(&mut self, offset: u16, data: Vec<u8>) -> Result<u8, std::io::Error> {
 
@@ -82,6 +113,8 @@ impl Page{
 
         return Ok(1);
     }
+
+
 
 
     pub fn read(&self, offset: u16, dst: &mut Vec<u8>) -> Result<u8, std::io::Error> {
@@ -101,35 +134,43 @@ impl Page{
     }
 
 
+
+
     pub fn byte(&self) -> &Vec<u8>{
         return &self.bytes
     }
+
+
 
 
     pub fn size(&self) -> usize{
         return self.bytes.len()
     }
 
+
+    
+
+
+
     pub fn remove_data_range(&mut self, from: u16, to: u16){
-        //check if before record index end point and after the metadata bytes
-        //
-        // if it is ok then take a slice from (to) to record end point and move all bytes left
-        // until they are at from.
-        //
-        // then set the record end point to -= (from - to). Dont care about the bytes after because
-        // they will be overwritten in the future.
+
         let metadata_end_pointer = 16;
-        if from < metadata_end_pointer || to + 1 > self.data_end_point{
+
+        if from < metadata_end_pointer{
             //out of range...
-        }else{
-            self.bytes.copy_within( to as usize .. ( self.data_end_point + 1) as usize , from as usize);
+        }else if to >= self.data_end_point{
             self.data_end_point -= (to - from);
 
+
+        }else{
+            
+            self.bytes.copy_within( to as usize .. ( self.data_end_point + 1 ) as usize , from as usize);
+            self.data_end_point -= (to - from);
             
         }
 
-
     }
+
 
 
 
@@ -151,20 +192,15 @@ impl Page{
 
 
 
-
-
     pub fn add_record_index(&mut self, entry: u16){
-        //add error checking
-        //
-        //thoughts: either shuffle all bytes to fill empty space or in this function find next
-        //empty slot.
-
         self.record_index_end_point -= 2;
         let bytes: [u8; 2] = [(entry >> 8) as u8, entry as u8];
 
         self.bytes[self.record_index_end_point as usize] = bytes[0];
         self.bytes[(self.record_index_end_point + 1) as usize] = bytes[1];
     }
+
+
 
     pub fn find_record_index(&self, value: u16) -> Option<u16>{
         let record_indexes = self.get_record_index();
@@ -183,7 +219,6 @@ impl Page{
 
             loop{
                 let middle_index = ((left_pointer + right_pointer) / 2) as usize;
-                //println!("l: {}, m: {}, r: {}", left_pointer, middle_index, right_pointer);
                 if value > record_indexes[middle_index]{
                     right_pointer = middle_index;
 
@@ -215,15 +250,11 @@ impl Page{
     }
 
 
+
+
     pub fn remove_record_index(&mut self, value: u16){
         let mut index = self.find_record_index(value).unwrap();
 
-        // | 0, 0, | 0, 0 , | 1, 32 |
-        //                       ^ index 
-        //shift everything from record end point to (index - 2), 2 places forward but not to overwrite
-        //the last bytes.
-        //also if the index is the end index then don't shift anything.
-        
         if index < 2{
             self.record_index_end_point += 2;
         }else{
@@ -231,6 +262,9 @@ impl Page{
             self.record_index_end_point += 2;
         }
     }
+
+
+
 
     pub fn update_record_index_range(&mut self, from: u16, to: u16, incr: u16, positive: bool){
         let mut indexes = self.get_record_index();
@@ -257,6 +291,9 @@ impl Page{
 
     }
 
+
+
+
     pub fn update_records_after(&mut self, record_value: u16, incr: u16, positive: bool){
         let location = match self.find_record_index(record_value){
             None    => return (), // UPDATE
@@ -265,6 +302,9 @@ impl Page{
         self.update_record_index_range(0, location , incr, positive);
 
     }
+
+
+
 
     pub fn get_record_count_after(&mut self, value: u16) -> u16{
        let index =match self.find_record_index(value){
