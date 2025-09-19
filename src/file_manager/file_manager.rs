@@ -32,11 +32,13 @@ pub fn build_file_manager(block_size: u16, data_directory: String) -> File_manag
 
 
 
+
 impl File_manager{
 
 
 
     //extract contents of a file block into a page's bytes vector
+    //and then change the page values to account for metadata
     
     pub fn read(&mut self, block: &Block_ID, page: &mut Page) -> Result<u8, std::io::Error>{
 
@@ -55,6 +57,30 @@ impl File_manager{
         let mut write_buffer = vec![0; block_size as usize];
 
         file.read(&mut write_buffer)?;
+
+        let page_num_bytes = &write_buffer[0..4];
+        let page_type = &write_buffer[4];
+        let prev_page_bytes: [u8; 4] = write_buffer[5..9].try_into().expect("error with getting prev page bytes at line 63 in filemanager");
+        let next_page_bytes = &write_buffer[9..13];
+        let data_end_point_bytes = &write_buffer[13..15];
+        let record_index_end_point_bytes = &write_buffer[15..17];
+        let content = &write_buffer[17..];
+
+        page.page_num = block.number;
+
+        page.previous_index = match u32::from_be_bytes(prev_page_bytes){
+                                0 => None,
+                                x => Some(x),
+        };
+
+        page.next_index = match u32::from_be_bytes(prev_page_bytes){
+                            0 => None,
+                            x => Some(x),
+        };
+
+
+        page.data_end_point = (data_end_point_bytes[0] as u16) << 8 | data_end_point_bytes[1] as u16;
+        page.record_index_end_point = (record_index_end_point_bytes[0] as u16) << 8 | record_index_end_point_bytes[1] as u16;
 
         page.write(0, write_buffer.to_vec());
 
@@ -88,6 +114,33 @@ impl File_manager{
         let mut data = vec![0; page.size()];
 
         page.read(0, &mut data);
+
+        //adding the meta data:
+        data[0..4].copy_from_slice(&block.number.to_be_bytes());
+
+        data[4] = page.page_type.clone() as u8;
+
+
+        match page.previous_index{
+            None => data[5..9].copy_from_slice(&[0,0,0,0]),
+        
+            Some(n) => data[5..9].copy_from_slice(&n.to_be_bytes()),
+        };
+
+
+
+        match page.next_index{
+            None => data[9..13].copy_from_slice(&[0,0,0,0]),
+            Some(n) => data[9..13].copy_from_slice(&n.to_be_bytes()),
+        };
+        
+        data[13..15].copy_from_slice(&page.data_end_point.to_be_bytes());
+
+        data[15..17].copy_from_slice(&page.record_index_end_point.to_be_bytes());
+
+
+
+        
 
         file.write(&data)?;
 
@@ -137,5 +190,7 @@ impl File_manager{
 
         }
     }
+
+
 }
 
