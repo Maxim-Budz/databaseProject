@@ -20,33 +20,23 @@ use crate::buffer_pool::page_table::Page_table;
 mod table;
 use crate::table::table::Table;
 use crate::table::table::Data_type;
+use crate::table::table::open_table;
 
 
 fn main() {
-    test_table_creation();
     let mut file_manager = build_file_manager(16384, "./files".to_string());
 
     let mut page_table = Page_table::new(40000, 16384);
 
-    let table = create_test_table_instance();
+    let mut table = open_table("Test_Table".to_string(), &mut file_manager, &mut page_table).unwrap();
 
+    //add_all_columns(&mut table, &mut page_table, &mut file_manager);
 
-    for i in 1..20{ 
-        test_adding_basic_column(&table, &mut file_manager, &mut page_table);
-        test_adding_basic_column_2(&table, &mut file_manager, &mut page_table);
-    }
-
-    //print_table_structure_page(&mut file_manager, &mut page_table);
-    for i in 1..5{
-        table.add_column("Strings".to_string(), Data_type::String, &mut page_table, &mut file_manager);
-    }
-    for i in 1..20{ 
-        test_adding_basic_column(&table, &mut file_manager, &mut page_table);
-        test_adding_basic_column_2(&table, &mut file_manager, &mut page_table);
-    }
     table.print_columns_2(&mut page_table, &mut file_manager);
-    test_finding_and_modifying_table_column(&table, &mut file_manager, &mut page_table);
-    table.remove_column("Strings".to_string(), &mut page_table, &mut file_manager);
+
+
+
+    page_table.write_all(&mut file_manager);
 
 }
 
@@ -124,6 +114,26 @@ fn test_finding_and_modifying_table_column(table: &Table, file_manager: &mut Fil
         table.modify_column_name("ABCDEFGHIJKLMNOPQRSTUVWXYZpwehthgegiahearjtoej4naojrfne".to_string(), "BLOBs".to_string(), page_table, file_manager);
     }
 
+}
+
+fn add_all_columns(table: &mut Table, page_table: &mut Page_table, file_manager: &mut File_manager) {
+    use Data_type::*;
+
+    let all_types = [
+        (Int, "Int"),
+        (Float, "Float"),
+        (String, "String"),
+        (Datetime, "DateTime"),
+        (Date, "Date"),
+        (Time, "Time"),
+        (Bool, "Bool"),
+        (Enum, "Enum"),
+        (Blob, "Blob"),
+    ];
+
+    for (dtype, name) in all_types {
+        table.add_column(name.to_string(), dtype, page_table, file_manager);
+    }
 }
 
 
