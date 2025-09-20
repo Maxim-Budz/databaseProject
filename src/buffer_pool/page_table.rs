@@ -59,6 +59,7 @@ impl Page_table{
                         entry.pin_count += 1;
                         let mut page = &entry.page;
                         let result = file_manager.write(block, &mut page);
+                        entry.dirty = false;
                         entry.pin_count -= 1;
                         return result
                         },   
@@ -67,6 +68,18 @@ impl Page_table{
 
         }
     }
+
+
+
+    pub fn write_all(&mut self, file_manager: &mut File_manager){
+        let blocks: Vec<_> = self.pages_in_memory.keys().cloned().collect();
+        for block in blocks{
+            self.write_to_disk(&block, file_manager);
+        }
+    
+    }
+
+
 
     //creates a page in between two pages
     pub fn create_overflow_page(&mut self, old_block: &Block_ID, page_type: Page_type, next_page_num: u32, overflow_bytes: &[u8], file_manager: &mut File_manager){

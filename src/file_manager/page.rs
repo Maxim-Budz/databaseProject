@@ -193,6 +193,7 @@ impl Page{
 
 
     pub fn add_record_index(&mut self, entry: u16){
+        println!("{:?}", self);
         self.record_index_end_point -= 2;
         let bytes: [u8; 2] = [(entry >> 8) as u8, entry as u8];
 

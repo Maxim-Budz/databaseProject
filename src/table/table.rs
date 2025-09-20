@@ -18,6 +18,16 @@ pub struct Column{
 
 }
 
+pub enum Value{
+    Int(i64),
+    Float(f64),
+    Text(String),
+    Time(u64),
+    Bool(bool),
+    Enum(String),
+    Blob(Vec<u8>),
+}
+
 #[repr(u8)]
 pub enum Data_type{
     Int = 0,                    // 8 bytes.
@@ -29,6 +39,58 @@ pub enum Data_type{
     Bool = 7,                   // 1 bytes.
     Enum = 8,                   // 6 bytes: 4 bytes page num 2 bytes index
     Blob = 9,                   // 6 bytes: 4 bytes page num 2 bytes index
+
+}
+
+
+impl Data_type{
+
+    fn size(&self) -> u8{
+
+        return match self{
+            Data_type::Int
+            | Data_type::Float
+            | Data_type::Datetime => 8,
+
+            Data_type::String
+            | Data_type::Enum
+            | Data_type::Blob => 6,
+
+            Data_type::Date
+            | Data_type::Time => 4,
+
+            Data_type::Bool => 1,
+        }
+    }
+
+
+}
+
+impl std::convert::TryFrom<u8> for Data_type {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Data_type::Int),
+            1 => Ok(Data_type::Float),
+            3 => Ok(Data_type::String),
+            4 => Ok(Data_type::Datetime),
+            5 => Ok(Data_type::Date),
+            6 => Ok(Data_type::Time),
+            7 => Ok(Data_type::Bool),
+            8 => Ok(Data_type::Enum),
+            9 => Ok(Data_type::Blob),
+            _ => Err(()),
+        }
+    }
+}
+
+pub fn open_table(name: String, file_manager: &mut File_manager, page_table: &mut Page_table) -> Option<Table>{
+    let mut table = Table::new(name);
+    table.column_schema = table.parse_columns(page_table, file_manager);
+    return Some(table);
+
+    
 
 }
 
@@ -279,24 +341,22 @@ impl Table{
         
     }
 
-    pub fn print_columns(&self, page_table: &mut Page_table, file_manager: &mut File_manager){
+    pub fn parse_columns(&self, page_table: &mut Page_table, file_manager: &mut File_manager) -> Vec<Column>{
         let mut page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
-        let mut index = 18;
+        let mut indexes = page.get_record_index();
         let mut count = 0;
-        loop{
-            let t = page.bytes[index];
-            let string_size_bytes = page.bytes[index + 1];
-            let string = std::str::from_utf8(&page.bytes[(index + 2) as usize .. (index as usize + 2 + string_size_bytes as usize) as usize]).unwrap();
+        let mut column_vector = Vec::new();
+        for index in indexes.iter().rev(){
             count += 1;
-
-            println!("Index: {}, Type: {}, Name: {}", count, t, string);
-            index += 2 + string_size_bytes as usize;
-
-            if index > page.data_end_point as usize{
-                return ()
-            }
-
+            let t = page.bytes[*index as usize];
+            let string_size_bytes = page.bytes[*index as usize + 1];
+            let string = std::str::from_utf8(&page.bytes[(*index + 2) as usize .. (*index as usize + 2 + string_size_bytes as usize)]).unwrap();
+            column_vector.push(Column{column_name: string.to_string().clone(), data_type: Data_type::try_from(t.clone()).unwrap()})
         }
+
+        return column_vector
+
+        //now check if we need to go to other page.
 
     }
 
@@ -321,10 +381,41 @@ impl Table{
         }
     }
 
-    pub fn add_record(){}
-    pub fn find_record(){}
-    pub fn modify_record(){}
-    pub fn remove_record(){}
+    pub fn add_record(&mut self, record: Vec<Value>, page_table: &mut Page_table, file_manager: &mut File_manager){
+        //verify if [values] follows the table schema.
+        //
+        //Find the page to write the record to.
+        //
+        //Find suitable data pages to write larger data to.
+        //
+        //
+        //Write the record to the record page and then write all the data to the data pages.
+        //
+        //
+        //Overflow if necessary.
+
+    }
+    pub fn find_record(){
+        //using B-Tree we can find the record by comparing fields with the search term.
+    }
+    pub fn modify_record(){
+        //Find record location
+        //
+        //
+        //If simple data then modify that and continue (no need for resizing)
+        //
+        //
+        // If larger data is modified, go to the correct data page and modify the data there. There
+        // will be a need to resize it.
+    }
+    pub fn remove_record(){
+        //First get a list of all larger data locations
+        //Then remove the record and shift all the data left to fill the place, also locate the overflow
+        //bytes and shift them aswell. 
+        //
+        //Finally, go to data page and de-allocate space so that new data can go there.
+
+    }
 
 
 
