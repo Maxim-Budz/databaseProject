@@ -3,9 +3,11 @@
 
 
 
-///BUG:
+///BUG LIST:
+/// none (for now ... )
 ///
-///Fix not updating the last name.....
+///
+///
 mod file_manager;
 use crate::file_manager::file_manager::File_manager;
 use crate::file_manager::file_manager::build_file_manager;
