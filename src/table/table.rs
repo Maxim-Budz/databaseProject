@@ -18,17 +18,42 @@ pub struct Column{
 
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value{
     Int(i64),
     Float(f64),
-    Text(String),
-    Time(u64),
+    String(String),
+    Datetime(u64),
+    Date(u32),
+    Time(u32),
     Bool(bool),
     Enum(String),
     Blob(Vec<u8>),
 }
 
+
+
+impl PartialEq<Data_type> for Value {
+    fn eq(&self, other: &Data_type) -> bool {
+        match self {
+            Value::Int(_)      => *other == Data_type::Int,
+            Value::Float(_)    => *other == Data_type::Float,
+            Value::String(_)   => *other == Data_type::String,
+            Value::Datetime(_) => *other == Data_type::Datetime,
+            Value::Date(_)     => *other == Data_type::Date,
+            Value::Time(_)     => *other == Data_type::Time,
+            Value::Bool(_)     => *other == Data_type::Bool,
+            Value::Enum(_)     => *other == Data_type::Enum,
+            Value::Blob(_)     => *other == Data_type::Blob,
+        }
+    }
+}
+
+
+
+
 #[repr(u8)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Data_type{
     Int = 0,                    // 8 bytes.
     Float = 1,                  // 8 bytes.
@@ -41,6 +66,7 @@ pub enum Data_type{
     Blob = 9,                   // 6 bytes: 4 bytes page num 2 bytes index
 
 }
+
 
 
 impl Data_type{
@@ -65,6 +91,15 @@ impl Data_type{
 
 
 }
+
+
+impl PartialEq<Value> for Data_type {
+    fn eq(&self, other: &Value) -> bool {
+        other == self
+    }
+}
+
+
 
 impl std::convert::TryFrom<u8> for Data_type {
     type Error = ();
@@ -393,8 +428,32 @@ impl Table{
         //
         //
         //Overflow if necessary.
+        //
+        let mut record_size = 0;
+        
+        for i in 0..self.column_schema.len(){
+            if self.column_schema[i].data_type != record[i]{
+                //ERROR entry type doesnt't match the column schema.
+                return ()
+            }
+
+            record_size += self.column_schema[i].data_type.size();
+        }
+
+
+        // generate the bytes that shall be stored with empty spaces for the strings, enums, blobs
+        // for now...
+
+
+        
+        
+
 
     }
+
+
+
+
     pub fn find_record(){
         //using B-Tree we can find the record by comparing fields with the search term.
     }
