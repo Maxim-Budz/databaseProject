@@ -4,7 +4,8 @@
 
 
 ///BUG LIST:
-/// none (for now ... )
+/// -infinite stalling when replacing a page, possibly due to the pin count not being reduced when
+/// page is no longer in use.
 ///
 ///
 ///
@@ -28,15 +29,13 @@ use crate::table::table::open_table;
 fn main() {
     let mut file_manager = build_file_manager(16384, "./files".to_string());
 
-    let mut page_table = Page_table::new(40000, 16384);
+    let mut page_table = Page_table::new(163840, 16384);
 
     let mut table = open_table("Test_Table".to_string(), &mut file_manager, &mut page_table).unwrap();
 
-    //add_all_columns(&mut table, &mut page_table, &mut file_manager);
-
     table.print_columns_2(&mut page_table, &mut file_manager);
 
-
+    //TODO TEST ADDING DATA TO DATA PAGES.
 
     page_table.write_all(&mut file_manager);
 
