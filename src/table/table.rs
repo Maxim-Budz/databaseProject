@@ -7,8 +7,14 @@ use crate::buffer_pool::page_table::Page_table;
 
 
 pub struct Table{
-    pub table_name:         String,
-    pub column_schema:      Vec<Column>,
+    pub table_name:     String,
+    pub column_schema:  Vec<Column>,
+
+    pub first_data_page_num:    u32,    
+    pub first_record_page_num:  u32,
+
+    pub data_free_space_tracker_page_num:       u32,
+    pub record_free_space_tracker_page_num:     u32,
     
 }
 
@@ -49,6 +55,28 @@ impl PartialEq<Data_type> for Value {
     }
 }
 
+impl Value{
+
+    fn size(&self) -> u8{
+
+        return match self{
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::Datetime(_) => 8,
+
+            Value::String(_) 
+            | Value::Enum(_) 
+            | Value::Blob(_)  => 6,
+
+            Value::Date(_) 
+            | Value::Time(_)  => 4,
+
+            Value::Bool(_) => 1,
+        }
+    }
+
+
+}
 
 
 
@@ -69,28 +97,6 @@ pub enum Data_type{
 
 
 
-impl Data_type{
-
-    fn size(&self) -> u8{
-
-        return match self{
-            Data_type::Int
-            | Data_type::Float
-            | Data_type::Datetime => 8,
-
-            Data_type::String
-            | Data_type::Enum
-            | Data_type::Blob => 6,
-
-            Data_type::Date
-            | Data_type::Time => 4,
-
-            Data_type::Bool => 1,
-        }
-    }
-
-
-}
 
 
 impl PartialEq<Value> for Data_type {
@@ -138,6 +144,10 @@ impl Table{
         return Table{
             table_name: name,
             column_schema: Vec::new(),
+            first_data_page_num:                5, //TEMP
+            first_record_page_num:              4, //TEMP
+            data_free_space_tracker_page_num:   3, //TEMP
+            record_free_space_tracker_page_num: 2, //TEMP
         }
     }
 
@@ -437,7 +447,7 @@ impl Table{
                 return ()
             }
 
-            record_size += self.column_schema[i].data_type.size();
+            record_size += record[i].size();
         }
 
 

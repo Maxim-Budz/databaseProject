@@ -20,7 +20,7 @@ pub fn build_page(size: u16, page_num: u32, page_type: Page_type) -> Page{
 
     return Page{
         bytes:                  vec![0; usize::from(size)],
-        page_num:               0,
+        page_num:               page_num,
         page_type:              page_type,
         previous_index:         None,
         next_index:             None,
@@ -39,6 +39,7 @@ pub enum Page_type{
     Record = 2,
     B_Tree = 3,
     Data = 4,
+    Free_space_tracker = 5,
 
     
 }
@@ -61,7 +62,7 @@ impl Page{
 
         return Page{
             bytes:                  vec![0; usize::from(size)],
-            page_num:               0,
+            page_num:               page_num,
             page_type:              page_type,
             previous_index:         None,
             next_index:             None,
@@ -112,6 +113,12 @@ impl Page{
             .copy_from_slice(&data);
 
         return Ok(1);
+    }
+
+    pub fn write_at_end(&mut self, data: Vec<u8>){
+
+        self.write(self.data_end_point, data);
+
     }
 
 

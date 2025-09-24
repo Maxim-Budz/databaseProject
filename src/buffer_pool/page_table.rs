@@ -7,6 +7,8 @@ use crate::file_manager::page::Page_type;
 
 use std::collections::HashMap;
 
+const CHUNK_SIZE: usize = (16 * 1024)- 17;
+
 #[derive(Debug)]
 pub struct Page_table_entry{
     pub page:       Page,
@@ -82,14 +84,19 @@ impl Page_table{
 
 
     //creates a page in between two pages
-    pub fn create_overflow_page(&mut self, old_block: &Block_ID, page_type: Page_type, next_page_num: u32, overflow_bytes: &[u8], file_manager: &mut File_manager){
+    pub fn create_overflow_page(&mut self, old_block: &Block_ID, page_type: Page_type, next_page_num: u32, overflow_bytes: &[u8], overflow_page_num: Option<u32>, file_manager: &mut File_manager){
         //create the page and fill in the appropriate data.
         
         //create a new page at the end of the file.
-        let overflow_page_num = match file_manager.total_blocks(&old_block.file_name){
-                            Err(e)  => return (),// TODO
-                            Ok(x)   => x,
+        let overflow_page_num = if overflow_page_num == None{
+            match file_manager.total_blocks(&old_block.file_name){
+                                Err(e)  => todo!("failure getting fileblocks"),// TODO
+                                Ok(x)   => x,
+            }
+        }else{
+            overflow_page_num.unwrap()
         };
+        
 
         let mut overflow_page = Page::new(self.page_size, overflow_page_num, page_type);
         let byte_length = overflow_bytes.len() as u16;
@@ -97,8 +104,6 @@ impl Page_table{
         overflow_page.write(17, overflow_bytes.to_vec() );
 
         overflow_page.data_end_point += byte_length;
-
-        overflow_page.update_record_index_range(self.page_size - 1, overflow_page.record_index_end_point, byte_length, true);
 
         overflow_page.set_next_page_num(next_page_num);
 
@@ -108,12 +113,60 @@ impl Page_table{
 
         prev_page.set_next_page_num(overflow_page_num);
 
+        
+
         if next_page_num != 0{
-            let mut next_page = self.get_mut_page(Block_ID{file_name: old_block.file_name.clone(), number: next_page_num}, file_manager).unwrap();
+            let next_block = Block_ID{file_name: old_block.file_name.clone(), number: next_page_num};
+            let mut next_page = if self.pages_in_memory.contains_key(&next_block){
+                self.get_mut_page(Block_ID{file_name: old_block.file_name.clone(), number: next_page_num}, file_manager).unwrap()
+            }
+            else{
+                let result = self.request_new_page(&next_block, file_manager);
+
+                if result.is_ok(){
+                    self.get_mut_page(Block_ID{file_name: old_block.file_name.clone(), number: next_page_num}, file_manager).unwrap()
+                }else{
+                    return ()
+                }
+
+            };
             next_page.set_previous_page_num(overflow_page_num);
         };
-
         self.add_page(overflow_page, &Block_ID{file_name: old_block.file_name.clone(), number: overflow_page_num}, file_manager);
+    }
+
+
+
+
+    pub fn create_multiple_overflow_pages_by_data(&mut self, data: &[u8], mut original_block: Block_ID, file_manager: &mut File_manager) -> (u32, u16){
+        //create all apart from last one
+        let mut overflow_num = file_manager.total_blocks(&original_block.file_name).unwrap(); //ERROR CHECKING
+        
+
+        
+        let mut block = original_block.clone();
+        
+
+        for chunk in data.chunks_exact(CHUNK_SIZE){
+            
+            self.create_overflow_page(&original_block, Page_type::Data, 0, chunk, Some(overflow_num), file_manager); 
+            original_block.number = overflow_num;
+            overflow_num += 1;
+        
+        }
+
+        let remainder = data.chunks_exact(CHUNK_SIZE).remainder();
+
+        if !remainder.is_empty() {
+
+            self.create_overflow_page(&original_block, Page_type::Data, 0, remainder, Some(overflow_num), file_manager);
+            return (overflow_num, (CHUNK_SIZE - remainder.len()) as u16)
+        }
+
+        return(overflow_num - 1, 0);
+
+        
+
     }
 
 
@@ -227,9 +280,8 @@ impl Page_table{
     pub fn add_page(&mut self, page: Page, block: &Block_ID, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
         let block_to_replace = self.find_next_replaceable_page();
         
-        if block_to_replace == None{
+        if block_to_replace != None{
 
-            
             let Some(block_to_replace) = block_to_replace else{return Ok(0)};
        
             let write_to_disk = {
