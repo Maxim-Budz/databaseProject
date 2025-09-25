@@ -37,7 +37,7 @@ pub fn build_page(size: u16, page_num: u32, page_type: Page_type) -> Page{
 pub enum Page_type{
     Table_structure = 1,
     Record = 2,
-    B_Tree = 3,
+    B_tree = 3,
     Data = 4,
     Free_space_tracker = 5,
 
@@ -116,8 +116,12 @@ impl Page{
     }
 
     pub fn write_at_end(&mut self, data: Vec<u8>){
-
+        let amount = data.len();
+        if amount > (self.record_index_end_point - self.data_end_point).into(){
+            return ()
+        };
         self.write(self.data_end_point, data);
+        self.data_end_point += amount as u16;
 
     }
 

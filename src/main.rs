@@ -1,13 +1,20 @@
 // CLI entry point
 //
-
-
+//TODO LIST:
+//
+//-implement saving the u8 type and u64 size for data via variable_data_manager.
+//
+//-implement a hash map of file name to last page number in page table. This fixes bug NO. 2
+//
+//-implement a  ID to Data reference table so that I can link records to the data reference so that
+// if this changes it only needs to be updated at the table.
 
 ///BUG LIST:
-/// -infinite stalling when replacing a page, possibly due to the pin count not being reduced when
+/// 1 -infinite stalling when replacing a page, possibly due to the pin count not being reduced when
 /// page is no longer in use.
 ///
-///
+/// 2 -creating new overflow pages via total blocks doesn't get the correct page num when there a
+/// blocks in the page table that are not yet written to file
 ///
 mod file_manager;
 use crate::file_manager::file_manager::File_manager;
@@ -24,6 +31,7 @@ mod table;
 use crate::table::table::Table;
 use crate::table::table::Data_type;
 use crate::table::table::open_table;
+use crate::table::variable_data_manager::Variable_data_manager;
 
 
 fn main() {
@@ -32,12 +40,26 @@ fn main() {
     let mut page_table = Page_table::new(163840, 16384);
 
     let mut table = open_table("Test_Table".to_string(), &mut file_manager, &mut page_table).unwrap();
+    let mut table = Table::new("Test_Table".to_string(), &mut file_manager);
 
-    table.print_columns_2(&mut page_table, &mut file_manager);
+    //println!("{:?}", table);
+    //table.print_columns_2(&mut page_table, &mut file_manager);
+
+    let mut variable_data_manager = Variable_data_manager::new("Test_Table".to_string(), table.first_data_page_num, &table.data_free_space_tracker_page_num, &mut page_table, &mut file_manager);
+    let d = "TestingTESTING123456789! ====MMMakndnwnoinfiowneio nri33nir12u848962389591y9248013hnp5rini2n3mrefs;';f#'eelfminwiorhhwrmm".as_bytes();
+    for i in 0..1000{
+        variable_data_manager.add_data(&d, &mut page_table, &mut file_manager);
+        //page_table.write_all(&mut file_manager);
+        
+        println!("{:?}", variable_data_manager.free_bytes);
+    }
 
     //TODO TEST ADDING DATA TO DATA PAGES.
 
     page_table.write_all(&mut file_manager);
+    //println!("................................................................................................................");
+    //println!("page_table: {:?}", page_table);
+
 
 }
 
@@ -78,14 +100,11 @@ fn test_page_replacement() {
 
 
 fn test_table_creation(){
-    let file_manager = build_file_manager(16384, "./files".to_string());
-    let table = Table::new("Test_Table".to_string());
-    table.init_file(file_manager);
+    let mut file_manager = build_file_manager(16384, "./files".to_string());
+    let table = Table::new("Test_Table".to_string(), &mut file_manager);
+    table.init_file(&mut file_manager);
 }
 
-fn create_test_table_instance() -> Table{
-    return Table::new("Test_Table".to_string())
-}
 
 fn print_table_structure_page(file_manager: &mut File_manager, page_table: &mut Page_table){
     let block = Block_ID{file_name: "Test_Table".to_string(), number: 0};

@@ -25,6 +25,7 @@ pub struct Page_table{
 
     pub max_page_count: u32,
     pub page_size: u16,
+
 }
 
 
@@ -42,10 +43,25 @@ impl Page_table{
             pages_in_memory: map,
             clock_index: 0,
             max_page_count: max_size,
-            page_size: page_size,
+            page_size: page_size, 
         }
         
 
+    }
+
+    pub fn set_dirty(&mut self, block: &Block_ID){
+        
+        let fetch = self.pages_in_memory.get_mut(block);
+        //ADD ERROR CHECKING 
+        match fetch{
+
+            Some(entry)    =>  {
+                        entry.dirty = true;
+                        return ()
+                        },   
+
+            None    =>  return (),
+        }
     }
     
 
