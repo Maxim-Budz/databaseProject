@@ -5,19 +5,19 @@ use crate::file_manager::file_manager::File_manager;
 use crate::buffer_pool::page_table::Page_table;
 
 
-
+#[derive(Debug)]
 pub struct Table{
     pub table_name:     String,
     pub column_schema:  Vec<Column>,
 
     pub first_data_page_num:    u32,    
     pub first_record_page_num:  u32,
-
+    pub b_tree_page_num:        u32,
     pub data_free_space_tracker_page_num:       u32,
     pub record_free_space_tracker_page_num:     u32,
     
 }
-
+#[derive(Debug, Clone)]
 pub struct Column{
     pub column_name:    String,
     pub data_type:      Data_type,
@@ -127,38 +127,78 @@ impl std::convert::TryFrom<u8> for Data_type {
 }
 
 pub fn open_table(name: String, file_manager: &mut File_manager, page_table: &mut Page_table) -> Option<Table>{
-    let mut table = Table::new(name);
+    let mut table = Table::new(name, file_manager);
     table.column_schema = table.parse_columns(page_table, file_manager);
+
+    //load the correct starting page nums aswell (not important)
     return Some(table);
-
-    
-
 }
+
 
 //in future implement the method to ensure the file is locked and all pages of the file are also
 //locked while changes ar ebeing made.
 
 impl Table{
 
-    pub fn new(name: String) -> Table{
-        return Table{
+    pub fn new(name: String, file_manager: &mut File_manager) -> Table{
+        let table = Table{
             table_name: name,
             column_schema: Vec::new(),
             first_data_page_num:                5, //TEMP
             first_record_page_num:              4, //TEMP
-            data_free_space_tracker_page_num:   3, //TEMP
-            record_free_space_tracker_page_num: 2, //TEMP
-        }
+            b_tree_page_num:                    3, //TEMP
+            data_free_space_tracker_page_num:   2, //TEMP
+            record_free_space_tracker_page_num: 1, //TEMP
+        };
+        //TODO CHECK IF FILE ALREADY EXISTS AND JUST LOAD THE DATA....
+       // table.init_file(file_manager);
+
+        return table
     }
 
 
 
-    pub fn init_file(&self, mut file_manager: File_manager) -> Result<u8, std::io::Error>{
-        let file = file_manager.get_file(&self.table_name);
-        let page = Page::new(file_manager.block_size, 0, Page_type::Table_structure);
+    pub fn init_file(&self, file_manager: &mut File_manager) -> Result<u8, std::io::Error>{
 
+        //generating the initial pages
+        let mut init_pages: Vec<Page> = Vec::new();
+        let free_space: u16 = (1024 * 16) - 18;
+
+        init_pages.push(Page::new(file_manager.block_size, 0, Page_type::Table_structure));
+        init_pages.push(Page::new(file_manager.block_size, 1, Page_type::Free_space_tracker));
+
+        let mut bytes: [u8;6]   = [0u8; 6];
+        let page_num: u32 = 4;
+        bytes[..4].copy_from_slice( &page_num.to_be_bytes()  );
+        bytes[4..].copy_from_slice( &free_space.to_be_bytes());
+        println!("1: {:?}", &bytes);
+        init_pages.last_mut().unwrap().write_at_end(bytes.to_vec());
+
+
+        init_pages.push(Page::new(file_manager.block_size, 2, Page_type::Free_space_tracker));
+
+        let page_num: u32 = 5;
+        bytes[..4].copy_from_slice( &page_num.to_be_bytes()  );
+        bytes[4..].copy_from_slice( &free_space.to_be_bytes());
+        println!("2: {:?}", &bytes);
+        init_pages.last_mut().unwrap().write_at_end(bytes.to_vec());
+
+
+        init_pages.push(Page::new(file_manager.block_size, 3, Page_type::B_tree));
+        init_pages.push(Page::new(file_manager.block_size, 4, Page_type::Record)); 
+        init_pages.push(Page::new(file_manager.block_size, 5, Page_type::Data));
         
-        return file_manager.write(&Block_ID{file_name: self.table_name.clone(), number: 0}, &page)
+        let file_name = self.table_name.clone();
+
+        for page in init_pages{
+            let res = file_manager.write(&Block_ID{file_name: file_name.clone(), number: page.page_num}, &page);
+
+            if !res.is_ok(){
+                return Ok(1) // ERROR CHECKING & Cancel all changes
+            }
+        }
+
+        return Ok(0)
 
     }
 

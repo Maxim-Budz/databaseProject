@@ -18,8 +18,22 @@
 //
 use std::collections::BinaryHeap;
 
-#[derive(Eq, PartialEq)]
-struct Page_free {
+use crate::file_manager::file_manager::File_manager;
+use crate::file_manager::file_manager::build_file_manager;
+use crate::file_manager::page::Page;
+use crate::file_manager::page::build_page;
+use crate::file_manager::block::Block_ID;
+use crate::file_manager::page::Page_type;
+
+use crate::buffer_pool::page_table::Page_table;
+
+use crate::table::table::Table;
+use crate::table::table::Data_type;
+use crate::table::table::open_table;
+use crate::table::variable_data_manager;
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Page_free {
     free: u16,
     page_num: u32,
 }
@@ -44,9 +58,9 @@ pub struct Variable_data_manager{
 
     pub free_bytes:                     BinaryHeap<Page_free>,
     //
-    pub file_name:                      str,
+    pub file_name:                      String,
     //
-    pub first_data_page_num:            u32,
+    pub last_data_page_num:             u32,
     //
     pub free_space_tracker_page_num:    u32,
     
@@ -54,21 +68,24 @@ pub struct Variable_data_manager{
 
 
 impl Variable_data_manager{
-
-    pub fn new(file_name: &str, first_data_page_num: &u32, free_space_tracker_page_num: &u32, page_table: &mut Page_table, file_manager: &mut File_manager ) -> Variable_data_manager{
+//TODO performance cost of clone here..
+    pub fn new(file_name: String, last_data_page_num: u32, free_space_tracker_page_num: &u32, page_table: &mut Page_table, file_manager: &mut File_manager ) -> Variable_data_manager{
 
         //retrieving the free byte tracker from the file.
-        let free_bytes: Vec<(u32, u16)> = Vec::new();
-        let page = page_table.get_mut_page(Block_ID{file_name: file_name, number: free_space_tracker_page_num}, file_manager).unwrap();//ERROR CHECKING
-        let mut index: usize = 18;
+        let mut free_bytes: BinaryHeap<Page_free> = BinaryHeap::new();
+        let mut page = page_table.get_mut_page(Block_ID{file_name: file_name.clone(), number: *free_space_tracker_page_num}, file_manager).unwrap();//ERROR CHECKING
+        let mut index: usize = 17;
 
         loop{
-            if index > &page.data_end_point as usize{
+            let data_end_point = page.data_end_point.clone();
+            if index > data_end_point as usize{ //MAGIC NUM
+            
 
-                if page.next_index == None || page.index == Some(0){
+                if page.next_index == None || page.next_index == Some(0){
                     break;
                 }else{
-                    page = page_table.get_mut_page(Block_ID{file_name: file_name, number: page.next_index}, file_manager).unwrap(); //ERROR CHECKING
+                    let next_index = page.next_index.unwrap();
+                    page = page_table.get_mut_page(Block_ID{file_name: file_name.clone(), number: next_index}, file_manager).unwrap(); //ERROR CHECKING
                     index = 18;
                 }
 
@@ -77,7 +94,7 @@ impl Variable_data_manager{
                 let page_num   =  u32::from_be_bytes(page.bytes[index..index+4].try_into().unwrap());
                 let free_space =  u16::from_be_bytes(page.bytes[index+4 ..index+6].try_into().unwrap());
 
-                free_bytes.push((page_num, free_space));
+                free_bytes.push(Page_free{free: free_space, page_num: page_num});
 
                 index += 6;
             }
@@ -86,36 +103,58 @@ impl Variable_data_manager{
         return Variable_data_manager{
             free_bytes:                  free_bytes,
             file_name:                   file_name,
-            first_data_page_num:         first_data_page_num,
-            free_space_tracker_page_num: free_space_tracker_page_num,
+            last_data_page_num:          last_data_page_num,
+            free_space_tracker_page_num: *free_space_tracker_page_num,
 
         }
     }
 
-    fn allocate(heap: &mut BinaryHeap<Page_free>, size: u64) -> Option<u32>{
+    fn allocate(heap: &mut BinaryHeap<Page_free>, data_size: u64) -> Option<u32>{
         let mut page = heap.pop()?;
-        if page.free as u64 < size {
+        if (page.free as u64) < data_size {
             return None
         }
 
-        page.free -= size as u16;
+        page.free -= data_size as u16;
         let chosen = page.page_num;
         heap.push(page);
         Some(chosen)
+
+    }
+
+    fn shrink_top(heap: &mut BinaryHeap<Page_free>, amount: u16) -> Option<u8>{
+        let mut page = heap.pop()?;
+        if page.free < amount{
+            
+            return None; //ERROR CHECKING
+        }
+
+        page.free -= amount;
+        heap.push(page);
+
+        return Some(1);
 
     }
     
     pub fn add_data(&mut self, bytes: &[u8], page_table: &mut Page_table, file_manager: &mut File_manager){
     //get largest free space and compare. If data is smaller store it there
 
-    let chosen = allocate(&mut self.free_bytes, bytes.len());
+    let chosen = Self::allocate(&mut self.free_bytes, bytes.len().try_into().unwrap());
 
     if let Some(page_num) = chosen{
-        let mut page = page_table.get_mut_page(Block_ID{file_name: self.file_name, number: page_num});
-        page.write_at_end(bytes);
+        let block = Block_ID{file_name: self.file_name.clone(), number: page_num};
+        let mut page = page_table.get_mut_page(block.clone(), file_manager).unwrap(); //ERROR CHECKING
+        page.write_at_end(bytes.to_vec());
+        page_table.set_dirty(&block);
+        Self::shrink_top(&mut self.free_bytes, bytes.len().try_into().unwrap());
+        
     }else{
-        page_table.create_multiple_overflow_pages_by_data(bytes, original_block)
+        
+        let res = page_table.create_multiple_overflow_pages_by_data(bytes, Block_ID{file_name: self.file_name.clone(), number: self.last_data_page_num}, file_manager);
+        self.last_data_page_num = res.0;
         //update the free space heap
+        self.free_bytes.push(Page_free{free: res.1, page_num: res.0});
+
 
     }
     
