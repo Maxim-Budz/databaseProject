@@ -138,8 +138,9 @@ impl Variable_data_manager{
     
     pub fn add_data(&mut self, bytes: &[u8], page_table: &mut Page_table, file_manager: &mut File_manager){
     //get largest free space and compare. If data is smaller store it there
-
+    
     let chosen = Self::allocate(&mut self.free_bytes, bytes.len().try_into().unwrap());
+
 
     if let Some(page_num) = chosen{
         let block = Block_ID{file_name: self.file_name.clone(), number: page_num};
@@ -149,7 +150,6 @@ impl Variable_data_manager{
         Self::shrink_top(&mut self.free_bytes, bytes.len().try_into().unwrap());
         
     }else{
-        
         let res = page_table.create_multiple_overflow_pages_by_data(bytes, Block_ID{file_name: self.file_name.clone(), number: self.last_data_page_num}, file_manager);
         self.last_data_page_num = res.0;
         //update the free space heap

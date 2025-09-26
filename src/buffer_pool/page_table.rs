@@ -26,6 +26,8 @@ pub struct Page_table{
     pub max_page_count: u32,
     pub page_size: u16,
 
+    pub largest_page_map: HashMap<String, u32>,
+
 }
 
 
@@ -34,20 +36,49 @@ impl Page_table{
 
 
 
-    pub fn new(total_size: u32, page_size: u16) -> Page_table{
+    pub fn new(total_size: u32, page_size: u16, file_names: Vec<String>, file_manager: &mut File_manager) -> Page_table{
+
         let max_size = total_size / page_size as u32;
         let mut map = HashMap::new();
         map.reserve(max_size.try_into().unwrap());
+
+        let mut largest_page_map = HashMap::new();
+
+        for file_name in file_names{
+            let largest_num = file_manager.total_blocks(&file_name).unwrap() - 1;
+            largest_page_map.insert(file_name, largest_num);
+        }
         
         Page_table{
-            pages_in_memory: map,
-            clock_index: 0,
-            max_page_count: max_size,
-            page_size: page_size, 
+            pages_in_memory:    map,
+            clock_index:        0,
+            max_page_count:     max_size,
+            page_size:          page_size, 
+            largest_page_map:   largest_page_map,
         }
         
 
     }
+
+    pub fn update_largest_page_map(&mut self, file_name: String, number: u32){
+        let fetch = self.largest_page_map.get(&file_name);
+
+        if let Some(entry) = fetch {
+            
+            if (*entry >= number){
+                return ()
+            }else{
+                self.largest_page_map.insert(file_name, number);
+            }
+        }else{
+            //check if file is valid... TODO
+            self.largest_page_map.insert(file_name, number);
+
+        }
+
+    }
+
+
 
     pub fn set_dirty(&mut self, block: &Block_ID){
         
@@ -104,15 +135,19 @@ impl Page_table{
         //create the page and fill in the appropriate data.
         
         //create a new page at the end of the file.
-        let overflow_page_num = if overflow_page_num == None{
-            match file_manager.total_blocks(&old_block.file_name){
-                                Err(e)  => todo!("failure getting fileblocks"),// TODO
-                                Ok(x)   => x,
-            }
-        }else{
-            overflow_page_num.unwrap()
-        };
-        
+        let overflow_page_num = 
+            if overflow_page_num == None{
+                match self.largest_page_map.get(&old_block.file_name.clone()){
+                    Some(number)    =>  *number,
+                    None            => { let n = file_manager.total_blocks(&old_block.file_name).unwrap();
+                                         self.update_largest_page_map(old_block.file_name.clone(), n);
+                                         n
+                                        },
+
+                }
+            }else{
+                overflow_page_num.unwrap()
+            };
 
         let mut overflow_page = Page::new(self.page_size, overflow_page_num, page_type);
         let byte_length = overflow_bytes.len() as u16;
@@ -155,8 +190,14 @@ impl Page_table{
 
 
     pub fn create_multiple_overflow_pages_by_data(&mut self, data: &[u8], mut original_block: Block_ID, file_manager: &mut File_manager) -> (u32, u16){
-        //create all apart from last one
-        let mut overflow_num = file_manager.total_blocks(&original_block.file_name).unwrap(); //ERROR CHECKING
+            let mut overflow_num = match self.largest_page_map.get_mut(&original_block.file_name.clone()){
+                Some(number)    => *number,
+                None            => { let n = file_manager.total_blocks(&original_block.file_name).unwrap();
+                                     self.update_largest_page_map(original_block.file_name.clone(), n);
+                                     n
+                                    },
+
+            }; 
         
 
         
@@ -174,12 +215,15 @@ impl Page_table{
         let remainder = data.chunks_exact(CHUNK_SIZE).remainder();
 
         if !remainder.is_empty() {
-
+            overflow_num+=1;
+            self.update_largest_page_map(original_block.file_name.clone(), overflow_num);
             self.create_overflow_page(&original_block, Page_type::Data, 0, remainder, Some(overflow_num), file_manager);
             return (overflow_num, (CHUNK_SIZE - remainder.len()) as u16)
         }
 
-        return(overflow_num - 1, 0);
+        self.update_largest_page_map(original_block.file_name.clone(), overflow_num);
+
+        return(overflow_num, 0);
 
         
 
@@ -259,8 +303,8 @@ impl Page_table{
             None => return None,
 
             Some(entry) => {
-                    
-                entry.pin_count += 1;
+                //WHEN MULTITHREADING UNCOMMENT THIS... 
+                //entry.pin_count += 1;
                 entry.referenced = true;
                 return Some(&mut entry.page)
                         },

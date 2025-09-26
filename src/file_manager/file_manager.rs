@@ -141,9 +141,6 @@ impl File_manager{
         data[15..17].copy_from_slice(&page.record_index_end_point.to_be_bytes());
 
 
-        println!("{:?}", data);
-
-        
 
         file.write(&data)?;
 

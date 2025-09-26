@@ -242,7 +242,7 @@ impl Table{
         //dst.copy_from_slice(src);
 
 
-        page.write((page.data_end_point + 3), column_name_bytes);
+        let _ = page.write((page.data_end_point + 3), column_name_bytes);
 
 
 
@@ -385,7 +385,7 @@ impl Table{
 
             //dst.copy_from_slice(src);
 
-            page.write( (2 + start_index), new_name.as_bytes().to_vec());
+            let _ = page.write( (2 + start_index), new_name.as_bytes().to_vec());
 
             page.remove_data_range(start_index + 2 + new_name.len() as u16, end_index);
 
@@ -404,7 +404,7 @@ impl Table{
             //let src = new_name.as_bytes();
             //dst.copy_from_slice(src);
 
-            page.write((start_index + 2), new_name.as_bytes().to_vec());
+            let _ = page.write((start_index + 2), new_name.as_bytes().to_vec()); //ERROR HANDLING
 
 
             page.update_records_after(start_index, bytes_to_add_number as u16, true);
