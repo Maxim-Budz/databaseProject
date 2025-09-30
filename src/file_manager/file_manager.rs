@@ -7,7 +7,6 @@ use std::io::SeekFrom;
 use std::io::Read;
 use std::io::Write;
 use std::io::Seek;
-use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -46,7 +45,7 @@ impl File_manager{
         let block_total = self.total_blocks(&block.file_name)?;
         let file = self.get_file(&block.file_name)?;
 
-        if(block_total < block.number){
+        if block_total < block.number {
             //block not in file error
             return Err(Error::new(ErrorKind::Other, "Block number is too large for file."));
         }
@@ -103,7 +102,7 @@ impl File_manager{
         let block_total = self.total_blocks(&block.file_name)?;
         let file = self.get_file(&block.file_name)?;
 
-        if(block_total < block.number){
+        if block_total < block.number {
 
             let blocks_to_be_added_number = block.number - block_total + 1;
             let data = vec![0; (blocks_to_be_added_number * block_size as u32) as usize ];

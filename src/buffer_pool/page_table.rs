@@ -45,7 +45,13 @@ impl Page_table{
         let mut largest_page_map = HashMap::new();
 
         for file_name in file_names{
-            let largest_num = file_manager.total_blocks(&file_name).unwrap() - 1;
+            let largest_num = match file_manager.total_blocks(&file_name).unwrap(){
+                    0 => 0,
+                    n => n-1,
+                    
+
+            };
+            
             largest_page_map.insert(file_name, largest_num);
         }
         
@@ -65,7 +71,7 @@ impl Page_table{
 
         if let Some(entry) = fetch {
             
-            if (*entry >= number){
+            if *entry >= number {
                 return ()
             }else{
                 self.largest_page_map.insert(file_name, number);
@@ -160,7 +166,7 @@ impl Page_table{
 
         overflow_page.set_previous_page_num(old_block.number);
 
-        let mut prev_page = self.get_mut_page(old_block.clone(), file_manager).unwrap();
+        let prev_page = self.get_mut_page(old_block.clone(), file_manager).unwrap();
 
         prev_page.set_next_page_num(overflow_page_num);
 
@@ -168,7 +174,7 @@ impl Page_table{
 
         if next_page_num != 0{
             let next_block = Block_ID{file_name: old_block.file_name.clone(), number: next_page_num};
-            let mut next_page = if self.pages_in_memory.contains_key(&next_block){
+            let next_page = if self.pages_in_memory.contains_key(&next_block){
                 self.get_mut_page(Block_ID{file_name: old_block.file_name.clone(), number: next_page_num}, file_manager).unwrap()
             }
             else{
@@ -201,7 +207,7 @@ impl Page_table{
         
 
         
-        let mut block = original_block.clone();
+        let block = original_block.clone();
         
 
         for chunk in data.chunks_exact(CHUNK_SIZE){

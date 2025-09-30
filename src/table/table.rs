@@ -10,10 +10,8 @@ pub struct Table{
     pub table_name:     String,
     pub column_schema:  Vec<Column>,
 
-    pub first_data_page_num:    u32,    
     pub first_record_page_num:  u32,
     pub b_tree_page_num:        u32,
-    pub data_free_space_tracker_page_num:       u32,
     pub record_free_space_tracker_page_num:     u32,
     
 }
@@ -35,6 +33,8 @@ pub enum Value{
     Bool(bool),
     Enum(String),
     Blob(Vec<u8>),
+    U32(u32),
+    U16(u16),
 }
 
 
@@ -51,6 +51,8 @@ impl PartialEq<Data_type> for Value {
             Value::Bool(_)     => *other == Data_type::Bool,
             Value::Enum(_)     => *other == Data_type::Enum,
             Value::Blob(_)     => *other == Data_type::Blob,
+            Value::U32(_)      => *other == Data_type::U32,
+            Value::U16(_)      => *other == Data_Type::U16,
         }
     }
 }
@@ -69,7 +71,10 @@ impl Value{
             | Value::Blob(_)  => 6,
 
             Value::Date(_) 
-            | Value::Time(_)  => 4,
+            | Value::Time(_)
+            | Value::U32(_)   => 4,
+
+            Value::U16(_)  => 2,
 
             Value::Bool(_) => 1,
         }
@@ -92,6 +97,8 @@ pub enum Data_type{
     Bool = 7,                   // 1 bytes.
     Enum = 8,                   // 6 bytes: 4 bytes page num 2 bytes index
     Blob = 9,                   // 6 bytes: 4 bytes page num 2 bytes index
+    U32  = 10,                  // 4 bytes.
+    U16  = 11,                  // 2 bytes
 
 }
 
@@ -121,6 +128,8 @@ impl std::convert::TryFrom<u8> for Data_type {
             7 => Ok(Data_type::Bool),
             8 => Ok(Data_type::Enum),
             9 => Ok(Data_type::Blob),
+            10 => Ok(Data_type::U32),
+            11 => Ok(Data_type::U16),
             _ => Err(()),
         }
     }
@@ -144,11 +153,9 @@ impl Table{
         let table = Table{
             table_name: name,
             column_schema: Vec::new(),
-            first_data_page_num:                5, //TEMP
-            first_record_page_num:              4, //TEMP
-            b_tree_page_num:                    3, //TEMP
-            data_free_space_tracker_page_num:   2, //TEMP
-            record_free_space_tracker_page_num: 1, //TEMP
+            first_record_page_num:              3, //TEMP
+            b_tree_page_num:                    1, //TEMP
+            record_free_space_tracker_page_num: 2, //TEMP
         };
         //TODO CHECK IF FILE ALREADY EXISTS AND JUST LOAD THE DATA....
        // table.init_file(file_manager);
@@ -210,7 +217,7 @@ impl Table{
         let block = Block_ID{file_name: self.table_name.clone(), number: 0};
 
 
-        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
+        let page = page_table.get_mut_page(block, file_manager).unwrap();
 
 
         //writing the column to the data section
@@ -242,7 +249,7 @@ impl Table{
         //dst.copy_from_slice(src);
 
 
-        let _ = page.write((page.data_end_point + 3), column_name_bytes);
+        let _ = page.write(page.data_end_point + 3, column_name_bytes);
 
 
 
@@ -275,11 +282,11 @@ impl Table{
 
         let indexes = page.get_record_index();
 
-        let mut page_num = 0;
+        let page_num = 0;
 
         for index in indexes{
             //println!("index: {:?}", index);
-            if (index > page.record_index_end_point - 2){
+            if index > page.record_index_end_point - 2 {
                 let next_page_bytes = &page.bytes[ (page.record_index_end_point-4) as usize .. (page.record_index_end_point) as usize ];
 
                 let page_num = (( next_page_bytes[0] as u32) << 24)
@@ -303,7 +310,7 @@ impl Table{
             }
            // println!("size: {:?} \n", &page.bytes[index as usize +1]);
 
-            if (page.bytes[index as usize + 1] == column_name_bytes_num ){
+            if page.bytes[index as usize + 1] == column_name_bytes_num {
 
                 //println!("AA");
                 let name_bytes = &page.bytes[(index+2) as usize .. (index+2+column_name_bytes_num as u16) as usize ];
@@ -332,7 +339,7 @@ impl Table{
 
         let block = Block_ID{file_name: self.table_name.clone(), number: location.0};
 
-        let mut page = match page_table.get_mut_page(block, file_manager){
+        let page = match page_table.get_mut_page(block, file_manager){
                         None    => return (),
                         Some(p) => p,
         };
@@ -349,7 +356,7 @@ impl Table{
             page.remove_data_range(start_index, end_index);
         }
         
-        page.update_records_after(start_index, (end_index - start_index), false);
+        page.update_records_after(start_index, end_index - start_index, false);
         page.remove_record_index(start_index);
 
 
@@ -367,7 +374,7 @@ impl Table{
         };
 
         let block = Block_ID{file_name: self.table_name.clone(), number: 0};
-        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
+        let page = page_table.get_mut_page(block, file_manager).unwrap();
 
         //if the string size is > to original then shift everything after the end of the string
         //enough places and then overwrite
@@ -385,7 +392,7 @@ impl Table{
 
             //dst.copy_from_slice(src);
 
-            let _ = page.write( (2 + start_index), new_name.as_bytes().to_vec());
+            let _ = page.write( 2 + start_index, new_name.as_bytes().to_vec());
 
             page.remove_data_range(start_index + 2 + new_name.len() as u16, end_index);
 
@@ -404,7 +411,7 @@ impl Table{
             //let src = new_name.as_bytes();
             //dst.copy_from_slice(src);
 
-            let _ = page.write((start_index + 2), new_name.as_bytes().to_vec()); //ERROR HANDLING
+            let _ = page.write(start_index + 2, new_name.as_bytes().to_vec()); //ERROR HANDLING
 
 
             page.update_records_after(start_index, bytes_to_add_number as u16, true);
@@ -420,15 +427,15 @@ impl Table{
     pub fn modify_column_type(&self, name: String, new_type: Data_type, page_table: &mut Page_table, file_manager: &mut File_manager){
         let location = self.find_column_index(name, page_table, file_manager).unwrap();
         let block    = Block_ID{file_name: self.table_name.clone(), number: location.0};
-        let mut page = page_table.get_mut_page(block, file_manager).unwrap();
+        let page = page_table.get_mut_page(block, file_manager).unwrap();
         
         page.bytes[location.1 as usize] = new_type as u8;
         
     }
 
     pub fn parse_columns(&self, page_table: &mut Page_table, file_manager: &mut File_manager) -> Vec<Column>{
-        let mut page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
-        let mut indexes = page.get_record_index();
+        let page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
+        let indexes = page.get_record_index();
         let mut count = 0;
         let mut column_vector = Vec::new();
         for index in indexes.iter().rev(){
@@ -450,7 +457,7 @@ impl Table{
 
     pub fn print_columns_2(&self, page_table: &mut Page_table, file_manager: &mut File_manager){ 
 
-        let mut page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
+        let page = page_table.get_mut_page(Block_ID{file_name: self.table_name.clone(), number: 0}, file_manager).unwrap();
 
         let indexes = page.get_record_index();
 
@@ -489,6 +496,9 @@ impl Table{
 
             record_size += record[i].size();
         }
+
+
+
 
 
         // generate the bytes that shall be stored with empty spaces for the strings, enums, blobs

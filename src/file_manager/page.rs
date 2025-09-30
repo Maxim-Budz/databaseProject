@@ -1,6 +1,5 @@
 use std::io::Error;
 use std::io::ErrorKind;
-use super::block::Block_ID;
 
 #[derive(Debug)]
 pub struct Page{
@@ -40,6 +39,7 @@ pub enum Page_type{
     B_tree = 3,
     Data = 4,
     Free_space_tracker = 5,
+    Variable_data_index = 6,
 
     
 }
@@ -132,10 +132,10 @@ impl Page{
 
         let end_point = dst.len();
 
-        if( usize::from(offset) > self.size()){
+        if usize::from(offset) > self.size() {
             return Err(Error::new(ErrorKind::Other, "Offest exceeds page size.")) 
 
-        }else if ( usize::from(offset)  +  end_point   >  self.size()  ){
+        }else if usize::from(offset)  +  end_point   >  self.size() {
             let end_point = self.size();
         }
 
@@ -170,13 +170,13 @@ impl Page{
         if from < metadata_end_pointer{
             //out of range...
         }else if to >= self.data_end_point{
-            self.data_end_point -= (to - from);
+            self.data_end_point -= to - from;
 
 
         }else{
             
             self.bytes.copy_within( to as usize .. ( self.data_end_point + 1 ) as usize , from as usize);
-            self.data_end_point -= (to - from);
+            self.data_end_point -= to - from;
             
         }
 
@@ -192,8 +192,8 @@ impl Page{
         
 
         for i in (0.. slice.len() - 2 as usize).step_by(2){
-            let mut big_endian = slice[i];
-            let mut little_endian = slice[i+1];
+            let big_endian = slice[i];
+            let little_endian = slice[i+1];
             let result: u16 = ( (big_endian as u16) << 8) | little_endian as u16;
             record_index.push(result);
         }
@@ -241,7 +241,7 @@ impl Page{
                     return Some(middle_index as u16 * 2)
                 }
 
-                if (left_pointer > right_pointer){
+                if left_pointer > right_pointer {
                     return None
                 }else if left_pointer == right_pointer || left_pointer == right_pointer - 1{
                     
@@ -265,7 +265,7 @@ impl Page{
 
 
     pub fn remove_record_index(&mut self, value: u16){
-        let mut index = self.find_record_index(value).unwrap();
+        let index = self.find_record_index(value).unwrap();
 
         if index < 2{
             self.record_index_end_point += 2;
@@ -279,10 +279,10 @@ impl Page{
 
 
     pub fn update_record_index_range(&mut self, from: u16, to: u16, incr: u16, positive: bool){
-        let mut indexes = self.get_record_index();
+        let indexes = self.get_record_index();
         let from = from / 2;
         let to = to / 2;
-        let mut slice = &indexes[from as usize .. to as usize];
+        let slice = &indexes[from as usize .. to as usize];
 
         let src: Vec<u8> = if positive{
             slice
@@ -296,7 +296,7 @@ impl Page{
                 .collect()
         };
 
-        let mut dst = &mut self.bytes[ (self.record_index_end_point + from) as usize .. (self.record_index_end_point + to * 2) as usize];
+        let dst = &mut self.bytes[ (self.record_index_end_point + from) as usize .. (self.record_index_end_point + to * 2) as usize];
 
         dst.copy_from_slice(&src);
 
@@ -326,7 +326,7 @@ impl Page{
 
        let total = self.get_record_index().len() as u16;
 
-       return (total - (index / 2))
+       return total - (index / 2)
     }
 
 

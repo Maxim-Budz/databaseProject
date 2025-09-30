@@ -19,18 +19,10 @@
 use std::collections::BinaryHeap;
 
 use crate::file_manager::file_manager::File_manager;
-use crate::file_manager::file_manager::build_file_manager;
-use crate::file_manager::page::Page;
-use crate::file_manager::page::build_page;
 use crate::file_manager::block::Block_ID;
-use crate::file_manager::page::Page_type;
 
 use crate::buffer_pool::page_table::Page_table;
 
-use crate::table::table::Table;
-use crate::table::table::Data_type;
-use crate::table::table::open_table;
-use crate::table::variable_data_manager;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Page_free {
@@ -66,10 +58,15 @@ pub struct Variable_data_manager{
     
 }
 
+pub fn init_variable_data_storage_file(){
+
+}
+
 
 impl Variable_data_manager{
-//TODO performance cost of clone here..
-    pub fn new(file_name: String, last_data_page_num: u32, free_space_tracker_page_num: &u32, page_table: &mut Page_table, file_manager: &mut File_manager ) -> Variable_data_manager{
+//TODO performance cost of clone here
+//CHECK IF VDS file exists and crete one if it doesn't exist.
+    pub fn new(last_data_page_num: u32, free_space_tracker_page_num: &u32, page_table: &mut Page_table, file_manager: &mut File_manager ) -> Variable_data_manager{
 
         //retrieving the free byte tracker from the file.
         let mut free_bytes: BinaryHeap<Page_free> = BinaryHeap::new();
@@ -102,7 +99,7 @@ impl Variable_data_manager{
  
         return Variable_data_manager{
             free_bytes:                  free_bytes,
-            file_name:                   file_name,
+            file_name:                   "Variable_Data_Storage",
             last_data_page_num:          last_data_page_num,
             free_space_tracker_page_num: *free_space_tracker_page_num,
 
@@ -144,7 +141,7 @@ impl Variable_data_manager{
 
     if let Some(page_num) = chosen{
         let block = Block_ID{file_name: self.file_name.clone(), number: page_num};
-        let mut page = page_table.get_mut_page(block.clone(), file_manager).unwrap(); //ERROR CHECKING
+        let page = page_table.get_mut_page(block.clone(), file_manager).unwrap(); //ERROR CHECKING
         page.write_at_end(bytes.to_vec());
         page_table.set_dirty(&block);
         Self::shrink_top(&mut self.free_bytes, bytes.len().try_into().unwrap());
@@ -195,6 +192,11 @@ impl Variable_data_manager{
     pub fn get_data(&self, page_num: u32, index: u16){
         //go to index and read the required bytes.
     }
+
+
+
+
+
 
 
 
