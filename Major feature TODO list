@@ -1,26 +1,16 @@
+Table
+-B Tree management
+
+File Manager :heavy_check_mark:
+
+Buffer Pool  :heavy_check_mark:
+
 Database Engine
 - CRUD operations for records,
 - ID to var data table,
-- B-Tree,
-- RUD operations for var data,
+- operations for var data,
 - Adding common DB features like primary and foreign keys that are auto generated and efficient linkage,
 - Database struct, managing all the tables and opening one from storage.
-
-
-
-SQL Compiler
-- parser
-- translator
-- actually converting it to operations
-- enforcing atomicity
-- log system
-
-
-
-CLI tool
-- shell script to take user input and run the SQL compiler on it
-- provide error messages
-
 
 
 Everything
